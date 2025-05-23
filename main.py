@@ -16,21 +16,31 @@ LOG_FILE = "download_logs.txt"
 FFMPEG_PATH = shutil.which("ffmpeg")
 COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
 
+
 def cleanup_dir(path: str):
     try:
         shutil.rmtree(path)
     except Exception as e:
         print(f"Gagal hapus folder: {path} | Error: {e}")
 
+
+def delete_file(path: str):
+    try:
+        os.remove(path)
+    except Exception as e:
+        print(f"Gagal hapus file: {path} | Error: {e}")
+
+
 @app.get("/")
 def root():
     return {"message": "Instagram Downloader API is running"}
+
 
 @app.get("/download/instagram")
 def download_instagram(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
-    format: str = Query("mp4")  # mp4 atau mp3
+    format: str = Query("mp4")  # "mp4" untuk video, "mp3" untuk audio saja
 ):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
@@ -49,7 +59,7 @@ def download_instagram(
             'preferredquality': '192',
         }] if format == "mp3" else [],
         'cookiefile': COOKIES_PATH,
-        'noplaylist': False,  # dibolehkan multi item (carousel)
+        'noplaylist': False,
         'socket_timeout': 3600,
     }
 
@@ -66,28 +76,27 @@ def download_instagram(
         if not downloaded_files:
             return {"error": f"Tidak ada file berhasil diunduh"}
 
-        # Buat log
+        # Log unduhan
         with open(LOG_FILE, "a", encoding="utf-8") as log_file:
             for f in downloaded_files:
                 log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {os.path.basename(f)}\n")
 
         background_tasks.add_task(cleanup_dir, download_dir)
 
-        # Jika hanya 1 file, langsung kirim
         if len(downloaded_files) == 1:
+            media_type = "video/mp4" if format == "mp4" else "audio/mpeg"
             return FileResponse(
                 path=downloaded_files[0],
                 filename=os.path.basename(downloaded_files[0]),
-                media_type="application/octet-stream"
+                media_type=media_type
             )
         else:
-            # Buat file ZIP
             zip_path = os.path.join(BASE_DOWNLOAD_DIR, f"{session_id}.zip")
             with zipfile.ZipFile(zip_path, "w") as zipf:
                 for file in downloaded_files:
                     zipf.write(file, os.path.basename(file))
 
-            background_tasks.add_task(lambda: os.remove(zip_path))
+            background_tasks.add_task(delete_file, zip_path)
 
             return FileResponse(
                 path=zip_path,
@@ -98,6 +107,7 @@ def download_instagram(
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
         return {"error": f"Gagal mengunduh: {str(e)}"}
+
 
 @app.get("/info")
 def video_info(url: str = Query(...), format: str = Query("mp4")):
