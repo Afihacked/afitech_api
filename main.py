@@ -6,6 +6,7 @@ import uuid
 import os
 import shutil
 from datetime import datetime
+from fastapi.routing import APIRoute
 
 app = FastAPI()
 
@@ -26,6 +27,9 @@ def cleanup_dir(path: str):
     except Exception as e:
         print(f"Gagal hapus folder: {path} | Error: {e}")
 
+@app.get("/routes-debug")
+def debug_routes():
+    return [route.path for route in app.routes if isinstance(route, APIRoute)]
 
 @app.get("/")
 def root():
