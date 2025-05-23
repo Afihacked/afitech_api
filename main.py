@@ -1,10 +1,10 @@
 from fastapi import FastAPI, Query, BackgroundTasks
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import yt_dlp
 import uuid
 import os
 import shutil
-import zipfile
 from datetime import datetime
 
 app = FastAPI()
@@ -16,6 +16,9 @@ LOG_FILE = "download_logs.txt"
 FFMPEG_PATH = shutil.which("ffmpeg")
 COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
 
+# Pasang static files untuk akses file hasil download
+app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
+
 
 def cleanup_dir(path: str):
     try:
@@ -24,23 +27,77 @@ def cleanup_dir(path: str):
         print(f"Gagal hapus folder: {path} | Error: {e}")
 
 
-def delete_file(path: str):
-    try:
-        os.remove(path)
-    except Exception as e:
-        print(f"Gagal hapus file: {path} | Error: {e}")
-
-
 @app.get("/")
 def root():
-    return {"message": "Instagram Downloader API is running"}
+    return {"message": "YouTube Downloader API is running"}
+
+
+@app.get("/download")
+def download_video(
+    background_tasks: BackgroundTasks,
+    url: str = Query(...),
+    format: str = Query("mp4"),
+    start: str = Query(None, description="Start time in HH:MM:SS or MM:SS"),
+    end: str = Query(None, description="End time in HH:MM:SS or MM:SS"),
+):
+    session_id = str(uuid.uuid4())
+    download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
+    os.makedirs(download_dir, exist_ok=True)
+
+    outtmpl = os.path.join(download_dir, f"{session_id}.%(ext)s")
+    download_sections = f"*{start}-{end}" if start and end else None
+
+    ydl_opts = {
+        'outtmpl': outtmpl,
+        'format': 'bestaudio/best' if format == "mp3" else 'bestvideo+bestaudio/best',
+        'ffmpeg_location': FFMPEG_PATH,
+        'merge_output_format': format,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }] if format == "mp3" else [],
+        'socket_timeout': 3600,
+        'noplaylist': True,
+        'cookiefile': COOKIES_PATH
+    }
+
+    if download_sections:
+        ydl_opts['download_sections'] = download_sections
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        for file in os.listdir(download_dir):
+            if file.startswith(session_id) and file.endswith(f".{format}"):
+                filepath = os.path.join(download_dir, file)
+
+                # Tulis log download
+                with open(LOG_FILE, "a", encoding="utf-8") as log_file:
+                    log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {file}\n")
+
+                # Tambah tugas background untuk hapus folder
+                background_tasks.add_task(cleanup_dir, download_dir)
+
+                return FileResponse(
+                    filepath,
+                    media_type="application/octet-stream",
+                    filename=file,
+                    background=background_tasks
+                )
+
+        return {"error": f"File .{format} tidak ditemukan setelah download"}
+    except Exception as e:
+        shutil.rmtree(download_dir, ignore_errors=True)
+        return {"error": f"Gagal mengunduh: {str(e)}"}
 
 
 @app.get("/download/instagram")
 def download_instagram(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
-    format: str = Query("mp4")  # "mp4" untuk video, "mp3" untuk audio saja
+    format: str = Query("mp4")  # mp4 atau mp3
 ):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
@@ -59,7 +116,7 @@ def download_instagram(
             'preferredquality': '192',
         }] if format == "mp3" else [],
         'cookiefile': COOKIES_PATH,
-        'noplaylist': False,
+        'noplaylist': False,  # mendukung carousel multi foto/video
         'socket_timeout': 3600,
     }
 
@@ -74,35 +131,36 @@ def download_instagram(
         ]
 
         if not downloaded_files:
-            return {"error": f"Tidak ada file berhasil diunduh"}
+            return {"error": "Tidak ada file berhasil diunduh"}
 
-        # Log unduhan
+        # Log semua file yang berhasil diunduh
         with open(LOG_FILE, "a", encoding="utf-8") as log_file:
             for f in downloaded_files:
                 log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {os.path.basename(f)}\n")
 
-        background_tasks.add_task(cleanup_dir, download_dir)
-
+        # Jika hanya 1 file, kirim langsung
         if len(downloaded_files) == 1:
             media_type = "video/mp4" if format == "mp4" else "audio/mpeg"
+            background_tasks.add_task(cleanup_dir, download_dir)
             return FileResponse(
                 path=downloaded_files[0],
                 filename=os.path.basename(downloaded_files[0]),
                 media_type=media_type
             )
         else:
-            zip_path = os.path.join(BASE_DOWNLOAD_DIR, f"{session_id}.zip")
-            with zipfile.ZipFile(zip_path, "w") as zipf:
-                for file in downloaded_files:
-                    zipf.write(file, os.path.basename(file))
+            # Kalau banyak file, kirim list URL statis agar client download satu per satu
+            download_urls = [
+                f"/static/{session_id}/{os.path.basename(f)}"
+                for f in downloaded_files
+            ]
 
-            background_tasks.add_task(delete_file, zip_path)
+            # Cleanup folder tetap dijalankan di background
+            background_tasks.add_task(cleanup_dir, download_dir)
 
-            return FileResponse(
-                path=zip_path,
-                filename=f"instagram_download_{session_id}.zip",
-                media_type="application/zip"
-            )
+            return {
+                "message": "Beberapa file berhasil diunduh",
+                "files": download_urls
+            }
 
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
