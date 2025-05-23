@@ -4,6 +4,7 @@ import yt_dlp
 import uuid
 import os
 import shutil
+import zipfile
 from datetime import datetime
 
 app = FastAPI()
@@ -15,37 +16,31 @@ LOG_FILE = "download_logs.txt"
 FFMPEG_PATH = shutil.which("ffmpeg")
 COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
 
-
 def cleanup_dir(path: str):
     try:
         shutil.rmtree(path)
     except Exception as e:
         print(f"Gagal hapus folder: {path} | Error: {e}")
 
-
 @app.get("/")
 def root():
-    return {"message": "YouTube Downloader API is running"}
+    return {"message": "Instagram Downloader API is running"}
 
-
-@app.get("/download")
-def download_video(
+@app.get("/download/instagram")
+def download_instagram(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
-    format: str = Query("mp4"),
-    start: str = Query(None, description="Start time in HH:MM:SS or MM:SS"),
-    end: str = Query(None, description="End time in HH:MM:SS or MM:SS"),
+    format: str = Query("mp4")  # mp4 atau mp3
 ):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
 
-    outtmpl = os.path.join(download_dir, f"{session_id}.%(ext)s")
-    download_sections = f"*{start}-{end}" if start and end else None
+    outtmpl = os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s")
 
     ydl_opts = {
         'outtmpl': outtmpl,
-        'format': 'bestaudio/best' if format == "mp3" else 'bestvideo+bestaudio/best',
+        'format': 'best' if format == "mp4" else 'bestaudio/best',
         'ffmpeg_location': FFMPEG_PATH,
         'merge_output_format': format,
         'postprocessors': [{
@@ -53,37 +48,53 @@ def download_video(
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }] if format == "mp3" else [],
+        'cookiefile': COOKIES_PATH,
+        'noplaylist': False,  # dibolehkan multi item (carousel)
         'socket_timeout': 3600,
-        'noplaylist': True,
-        'cookiefile': COOKIES_PATH
     }
-
-    if download_sections:
-        ydl_opts['download_sections'] = download_sections
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        for file in os.listdir(download_dir):
-            if file.startswith(session_id) and file.endswith(f".{format}"):
-                filepath = os.path.join(download_dir, file)
+        downloaded_files = [
+            os.path.join(download_dir, f)
+            for f in os.listdir(download_dir)
+            if os.path.isfile(os.path.join(download_dir, f))
+        ]
 
-                # ✅ Tulis log download
-                with open(LOG_FILE, "a", encoding="utf-8") as log_file:
-                    log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {file}\n")
+        if not downloaded_files:
+            return {"error": f"Tidak ada file berhasil diunduh"}
 
-                # ✅ Tambah tugas background untuk hapus folder
-                background_tasks.add_task(cleanup_dir, download_dir)
+        # Buat log
+        with open(LOG_FILE, "a", encoding="utf-8") as log_file:
+            for f in downloaded_files:
+                log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {os.path.basename(f)}\n")
 
-                return FileResponse(
-                    filepath,
-                    media_type="application/octet-stream",
-                    filename=file,
-                    background=background_tasks
-                )
+        background_tasks.add_task(cleanup_dir, download_dir)
 
-        return {"error": f"File .{format} tidak ditemukan setelah download"}
+        # Jika hanya 1 file, langsung kirim
+        if len(downloaded_files) == 1:
+            return FileResponse(
+                path=downloaded_files[0],
+                filename=os.path.basename(downloaded_files[0]),
+                media_type="application/octet-stream"
+            )
+        else:
+            # Buat file ZIP
+            zip_path = os.path.join(BASE_DOWNLOAD_DIR, f"{session_id}.zip")
+            with zipfile.ZipFile(zip_path, "w") as zipf:
+                for file in downloaded_files:
+                    zipf.write(file, os.path.basename(file))
+
+            background_tasks.add_task(lambda: os.remove(zip_path))
+
+            return FileResponse(
+                path=zip_path,
+                filename=f"instagram_download_{session_id}.zip",
+                media_type="application/zip"
+            )
+
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
         return {"error": f"Gagal mengunduh: {str(e)}"}
@@ -105,22 +116,17 @@ def video_info(url: str = Query(...), format: str = Query("mp4")):
             title = info.get('title', 'Tidak diketahui')
             filesize = 0
 
-            # Coba ambil ukuran file dari entry format
             formats = info.get('formats', [])
-            if formats:
-                # Filter formats untuk hanya yang memiliki filesize atau filesize_approx yang valid
-                valid_formats = [
-                    f for f in formats
-                    if f.get('filesize') is not None or f.get('filesize_approx') is not None
-                ]
+            valid_formats = [
+                f for f in formats if f.get('filesize') or f.get('filesize_approx')
+            ]
 
-                if valid_formats:
-                    # Pilih format dengan filesize terbesar
-                    best_format = max(
-                        valid_formats,
-                        key=lambda f: (f.get('filesize', 0) or f.get('filesize_approx', 0))
-                    )
-                    filesize = best_format.get('filesize') or best_format.get('filesize_approx', 0)
+            if valid_formats:
+                best_format = max(
+                    valid_formats,
+                    key=lambda f: f.get('filesize') or f.get('filesize_approx', 0)
+                )
+                filesize = best_format.get('filesize') or best_format.get('filesize_approx', 0)
 
             return {
                 "title": title,
@@ -128,5 +134,3 @@ def video_info(url: str = Query(...), format: str = Query("mp4")):
             }
     except Exception as e:
         return {"error": f"Gagal mengambil info video: {str(e)}"}
-
-
