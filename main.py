@@ -17,7 +17,6 @@ LOG_FILE = "download_logs.txt"
 FFMPEG_PATH = shutil.which("ffmpeg")
 COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
 
-# Pasang static files untuk akses file hasil download
 app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
 
 
@@ -27,9 +26,11 @@ def cleanup_dir(path: str):
     except Exception as e:
         print(f"Gagal hapus folder: {path} | Error: {e}")
 
+
 @app.get("/routes-debug")
 def debug_routes():
     return [route.path for route in app.routes if isinstance(route, APIRoute)]
+
 
 @app.get("/")
 def root():
@@ -41,8 +42,8 @@ def download_video(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
     format: str = Query("mp4"),
-    start: str = Query(None, description="Start time in HH:MM:SS or MM:SS"),
-    end: str = Query(None, description="End time in HH:MM:SS or MM:SS"),
+    start: str = Query(None),
+    end: str = Query(None),
 ):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
@@ -53,7 +54,7 @@ def download_video(
 
     ydl_opts = {
         'outtmpl': outtmpl,
-        'format': 'bestaudio/best' if format == "mp3" else 'bestvideo+bestaudio/best',
+        'format': 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best',
         'ffmpeg_location': FFMPEG_PATH,
         'merge_output_format': format,
         'postprocessors': [{
@@ -77,11 +78,9 @@ def download_video(
             if file.startswith(session_id) and file.endswith(f".{format}"):
                 filepath = os.path.join(download_dir, file)
 
-                # Tulis log download
                 with open(LOG_FILE, "a", encoding="utf-8") as log_file:
                     log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {file}\n")
 
-                # Tambah tugas background untuk hapus folder
                 background_tasks.add_task(cleanup_dir, download_dir)
 
                 return FileResponse(
@@ -101,7 +100,7 @@ def download_video(
 def download_instagram(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
-    format: str = Query("mp4")  # mp4 atau mp3
+    format: str = Query("mp4")
 ):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
@@ -111,7 +110,7 @@ def download_instagram(
 
     ydl_opts = {
         'outtmpl': outtmpl,
-        'format': 'best' if format == "mp4" else 'bestaudio/best',
+        'format': 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best',
         'ffmpeg_location': FFMPEG_PATH,
         'merge_output_format': format,
         'postprocessors': [{
@@ -120,7 +119,7 @@ def download_instagram(
             'preferredquality': '192',
         }] if format == "mp3" else [],
         'cookiefile': COOKIES_PATH,
-        'noplaylist': False,  # mendukung carousel multi foto/video
+        'noplaylist': False,
         'socket_timeout': 3600,
     }
 
@@ -137,12 +136,10 @@ def download_instagram(
         if not downloaded_files:
             return {"error": "Tidak ada file berhasil diunduh"}
 
-        # Log semua file yang berhasil diunduh
         with open(LOG_FILE, "a", encoding="utf-8") as log_file:
             for f in downloaded_files:
                 log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {os.path.basename(f)}\n")
 
-        # Jika hanya 1 file, kirim langsung
         if len(downloaded_files) == 1:
             media_type = "video/mp4" if format == "mp4" else "audio/mpeg"
             background_tasks.add_task(cleanup_dir, download_dir)
@@ -152,13 +149,10 @@ def download_instagram(
                 media_type=media_type
             )
         else:
-            # Kalau banyak file, kirim list URL statis agar client download satu per satu
             download_urls = [
                 f"/static/{session_id}/{os.path.basename(f)}"
                 for f in downloaded_files
             ]
-
-            # Cleanup folder tetap dijalankan di background
             background_tasks.add_task(cleanup_dir, download_dir)
 
             return {
@@ -178,7 +172,7 @@ def video_info(url: str = Query(...), format: str = Query("mp4")):
         'skip_download': True,
         'simulate': True,
         'forcejson': True,
-        'format': 'bestaudio/best' if format == "mp3" else 'bestvideo+bestaudio/best',
+        'format': 'bestaudio/best' if format == "mp3" else 'bv*+ba/bestvideo+bestaudio/best',
         'cookiefile': COOKIES_PATH
     }
 
