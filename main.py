@@ -9,6 +9,7 @@ import os
 import shutil
 from datetime import datetime
 from fastapi.routing import APIRoute
+from urllib.parse import urlparse, urlunparse
 
 app = FastAPI()
 
@@ -20,6 +21,14 @@ FFMPEG_PATH = shutil.which("ffmpeg")
 COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
 
 app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
+
+def clean_instagram_url(url: str) -> str:
+    parsed = urlparse(url)
+    if "instagram.com" in parsed.netloc:
+        # Hilangkan parameter query dan fragment
+        cleaned = parsed._replace(query="", fragment="")
+        return urlunparse(cleaned)
+    return url
 
 
 def cleanup_dir(path: str):
@@ -104,6 +113,8 @@ def download_instagram(
     url: str = Query(...),
     format: str = Query("mp4")
 ):
+    url = clean_instagram_url(url)  # ⬅️ Tambahkan ini
+    
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
@@ -189,6 +200,8 @@ def download_instagram(
 
 @app.get("/info")
 def video_info(url: str = Query(...)):
+    url = clean_instagram_url(url)  # ⬅️ bersihkan URL sebelum diproses
+
     ydl_opts = {
         'quiet': True,
         'skip_download': True,
@@ -204,7 +217,6 @@ def video_info(url: str = Query(...)):
             images = []
             video_url = None
 
-            # Jika ada banyak item (carousel post)
             entries = info.get("entries", [info]) if "entries" in info else [info]
 
             for entry in entries:
@@ -226,3 +238,4 @@ def video_info(url: str = Query(...)):
         return {
             "error": f"Gagal mengambil info konten: {str(e)}"
         }
+
