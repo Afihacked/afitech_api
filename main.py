@@ -108,90 +108,79 @@ def download_instagram(
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
 
-    try:
-        ydl_info_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'forcejson': True,
-            'cookiefile': COOKIES_PATH,
-        }
+    ydl_opts = {
+        'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
+        'format': 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best',
+        'ffmpeg_location': FFMPEG_PATH,
+        'merge_output_format': format,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }] if format == "mp3" else [],
+        'cookiefile': COOKIES_PATH,
+        'noplaylist': False,
+        'socket_timeout': 3600,
+        'quiet': True,
+        'skip_download': True,
+        'forcejson': True
+    }
 
-        with yt_dlp.YoutubeDL(ydl_info_opts) as ydl:
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        entries = info.get("entries", [info]) if "entries" in info else [info]
-        image_urls = []
-        for entry in entries:
-            if entry.get("ext") in ["jpg", "jpeg", "png", "webp"]:
-                image_urls.append(entry.get("url"))
+            entries = info.get("entries", [info]) if "entries" in info else [info]
 
-        if image_urls:
             downloaded_files = []
-            for idx, img_url in enumerate(image_urls):
-                ext = os.path.splitext(img_url)[1].split("?")[0] or ".jpg"
-                filename = f"{session_id}_{idx}{ext}"
-                path = os.path.join(download_dir, filename)
 
-                response = requests.get(img_url, stream=True)
-                with open(path, "wb") as f:
-                    for chunk in response.iter_content(1024):
-                        f.write(chunk)
+            for entry in entries:
+                media_url = entry.get("url")
+                ext = entry.get("ext", "")
 
-                downloaded_files.append(path)
+                if not media_url:
+                    continue
 
-            background_tasks.add_task(cleanup_dir, download_dir)
-
-            if len(downloaded_files) == 1:
-                return FileResponse(
-                    path=downloaded_files[0],
-                    filename=os.path.basename(downloaded_files[0]),
-                    media_type="image/jpeg",
-                    background=background_tasks
-                )
-            else:
-                return JSONResponse(
-                    content={
-                        "message": "Beberapa gambar berhasil diunduh",
-                        "files": [f"/static/{session_id}/{os.path.basename(f)}" for f in downloaded_files]
-                    }
-                )
-
-        # Jika tidak ada gambar, lanjutkan dengan video
-        outtmpl = os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s")
-        ydl_download_opts = {
-            'outtmpl': outtmpl,
-            'format': 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best',
-            'ffmpeg_location': FFMPEG_PATH,
-            'merge_output_format': format,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }] if format == "mp3" else [],
-            'cookiefile': COOKIES_PATH,
-            'noplaylist': False,
-            'socket_timeout': 3600,
-        }
-
-        with yt_dlp.YoutubeDL(ydl_download_opts) as ydl:
-            ydl.download([url])
-
-        downloaded_files = [
-            os.path.join(download_dir, f)
-            for f in os.listdir(download_dir)
-            if os.path.isfile(os.path.join(download_dir, f))
-        ]
+                if ext in ["jpg", "jpeg", "png", "webp"]:
+                    # Download image manually
+                    response = requests.get(media_url, stream=True)
+                    if response.status_code == 200:
+                        filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext}")
+                        with open(filename, "wb") as f:
+                            shutil.copyfileobj(response.raw, f)
+                        downloaded_files.append(filename)
+                else:
+                    # Download video with yt-dlp
+                    ydl.download([entry.get("webpage_url", url)])
+                    # Re-scan folder for new files
+                    for f in os.listdir(download_dir):
+                        full_path = os.path.join(download_dir, f)
+                        if os.path.isfile(full_path):
+                            downloaded_files.append(full_path)
 
         if not downloaded_files:
-            return {"error": "Tidak ada file berhasil diunduh"}
+            raise HTTPException(status_code=404, detail="Tidak ada file yang berhasil diunduh.")
+
+        with open(LOG_FILE, "a", encoding="utf-8") as log_file:
+            for f in downloaded_files:
+                log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {os.path.basename(f)}\n")
 
         background_tasks.add_task(cleanup_dir, download_dir)
 
-        return FileResponse(
-            path=downloaded_files[0],
-            filename=os.path.basename(downloaded_files[0]),
-            media_type="video/mp4" if format == "mp4" else "audio/mpeg"
-        )
+        if len(downloaded_files) == 1:
+            media_type = "video/mp4" if downloaded_files[0].endswith(".mp4") else "image/jpeg"
+            return FileResponse(
+                path=downloaded_files[0],
+                filename=os.path.basename(downloaded_files[0]),
+                media_type=media_type
+            )
+        else:
+            return {
+                "message": "Beberapa file berhasil diunduh",
+                "files": [
+                    f"/static/{session_id}/{os.path.basename(f)}" for f in downloaded_files
+                ]
+            }
 
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
