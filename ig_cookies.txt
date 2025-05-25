@@ -1,0 +1,9 @@
+# Netscape HTTP Cookie File
+# This file is generated manually for use with Instaloader
+.instagram.com	TRUE	/	FALSE	1893456000	csrftoken	cyExTT8ns2Bs7Y0uI_Czgk
+.instagram.com	TRUE	/	TRUE	1893456000	sessionid	2267444146%3ALBOUQu5yGTT4PU%3A13%3AAYcWe-xRadpp28XjcFj6mT9xIzRUWUsMTuWYjTdUSA
+.instagram.com	TRUE	/	TRUE	1893456000	ds_user_id	2267444146
+.instagram.com	TRUE	/	TRUE	1893456000	ig_did	35C9EFE1-CB01-4BF3-BD61-98AFC9CD6BD7
+.instagram.com	TRUE	/	TRUE	1893456000	mid	aCsbrAALAAH-exuwESVTX1a9zhtS
+.instagram.com	TRUE	/	TRUE	1893456000	rur	"HIL\0542267444146\0541779712984:01f77e6f8ae4c674c85d0549c31537882e6183ed99f20c0eb6c40936c80d5f4eeaac223c"
+.instagram.com	TRUE	/	TRUE	1893456000	ig_nrcb	1
