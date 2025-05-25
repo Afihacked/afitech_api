@@ -172,7 +172,6 @@ def video_info(url: str = Query(...), format: str = Query("mp4")):
         'skip_download': True,
         'simulate': True,
         'forcejson': True,
-        'format': 'bestaudio/best' if format == "mp3" else 'bv*+ba/bestvideo+bestaudio/best',
         'cookiefile': COOKIES_PATH
     }
 
@@ -180,13 +179,24 @@ def video_info(url: str = Query(...), format: str = Query("mp4")):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'Tidak diketahui')
-            filesize = 0
-
             formats = info.get('formats', [])
+            thumbnails = info.get('thumbnails', [])
+
+            # Ambil URL video (jika ada)
+            video_url = None
+            for f in formats:
+                if f.get('vcodec') != 'none':
+                    video_url = f.get('url')
+                    break
+
+            # Ambil semua gambar (jika ada)
+            image_urls = [t["url"] for t in thumbnails if "url" in t]
+
+            # Hitung estimasi filesize
+            filesize = 0
             valid_formats = [
                 f for f in formats if f.get('filesize') or f.get('filesize_approx')
             ]
-
             if valid_formats:
                 best_format = max(
                     valid_formats,
@@ -196,7 +206,10 @@ def video_info(url: str = Query(...), format: str = Query("mp4")):
 
             return {
                 "title": title,
-                "filesize": filesize
+                "filesize": filesize,
+                "video": video_url,
+                "images": image_urls
             }
+
     except Exception as e:
         return {"error": f"Gagal mengambil info video: {str(e)}"}
