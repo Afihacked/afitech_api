@@ -290,11 +290,11 @@ def get_content_info(url: str = Query(...)):
             shortcode = shortcode_match.group(1)
 
             L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
-            L.load_session_from_file("afitechapi")  # ✅ Muat session dari file session-afitechapi
+            session_path = "./session-afitechapi"  # ✅ pastikan ini sesuai lokasi file kamu
+            L.load_session_from_file("afitechapi", filename=session_path)
 
             post = instaloader.Post.from_shortcode(L.context, shortcode)
 
-            # Deteksi jenis konten
             if post.is_video:
                 return {
                     "title": post.caption or "Instagram Video",
