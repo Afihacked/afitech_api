@@ -108,11 +108,17 @@ def download_instagram(
 
     outtmpl = os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s")
 
+    # Gunakan format 'best' untuk fleksibilitas (bisa gambar, video, dll)
+    if format in ("mp4", "mp3"):
+        ydl_format = 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best'
+    else:
+        ydl_format = 'best'
+
     ydl_opts = {
         'outtmpl': outtmpl,
-        'format': 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best',
+        'format': ydl_format,
         'ffmpeg_location': FFMPEG_PATH,
-        'merge_output_format': format,
+        'merge_output_format': format if format in ("mp4", "mp3") else None,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -141,11 +147,22 @@ def download_instagram(
                 log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {os.path.basename(f)}\n")
 
         if len(downloaded_files) == 1:
-            media_type = "video/mp4" if format == "mp4" else "audio/mpeg"
+            file_path = downloaded_files[0]
+            ext = os.path.splitext(file_path)[-1].lower()
+
+            if ext in [".jpg", ".jpeg", ".png", ".webp"]:
+                media_type = f"image/{ext[1:]}" if ext != ".jpg" else "image/jpeg"
+            elif ext == ".mp4":
+                media_type = "video/mp4"
+            elif ext == ".mp3":
+                media_type = "audio/mpeg"
+            else:
+                media_type = "application/octet-stream"
+
             background_tasks.add_task(cleanup_dir, download_dir)
             return FileResponse(
-                path=downloaded_files[0],
-                filename=os.path.basename(downloaded_files[0]),
+                path=file_path,
+                filename=os.path.basename(file_path),
                 media_type=media_type
             )
         else:
