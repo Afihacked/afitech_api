@@ -264,11 +264,12 @@ def get_content_info(url: str = Query(...)):
     if "instagram.com" in url:
         try:
             # Ambil shortcode dari URL
-            shortcode_match = re.search(r"/p/([A-Za-z0-9_-]+)/", url)
+            shortcode_match = re.search(r"/(p|reel|tv)/([A-Za-z0-9_-]+)/", url)
             if not shortcode_match:
-                return JSONResponse(status_code=400, content={"error": "URL Instagram tidak valid."})
+            return JSONResponse(status_code=400, content={"error": "URL Instagram tidak valid."})
 
-            shortcode = shortcode_match.group(1)
+            shortcode = shortcode_match.group(2)
+
             L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
             post = instaloader.Post.from_shortcode(L.context, shortcode)
 
