@@ -135,10 +135,16 @@ def download_instagram(
 
         entries = info.get("entries", [info]) if "entries" in info else [info]
 
-        for entry in entries:
-            media_url = entry.get("url")
-            ext = entry.get("ext", "")
-            webpage_url = entry.get("webpage_url", url)
+for entry in entries:
+    media_url = entry.get("url")
+    if not media_url:
+        continue  # Skip jika tidak ada URL
+
+    ext = entry.get("ext") or (
+        "jpg" if any(media_url.endswith(x) for x in [".jpg", ".jpeg", ".png", ".webp"]) else "mp4"
+    )
+
+    webpage_url = entry.get("webpage_url", url)
 
             # Download gambar secara manual
             if ext in ["jpg", "jpeg", "png", "webp"]:
@@ -199,7 +205,7 @@ def download_instagram(
 
 @app.get("/info")
 def video_info(url: str = Query(...)):
-    url = clean_instagram_url(url)  # ⬅️ bersihkan URL sebelum diproses
+    url = clean_instagram_url(url)
 
     ydl_opts = {
         'quiet': True,
@@ -219,12 +225,14 @@ def video_info(url: str = Query(...)):
             entries = info.get("entries", [info]) if "entries" in info else [info]
 
             for entry in entries:
-                ext = entry.get("ext", "")
                 media_url = entry.get("url")
+                if not media_url:
+                    continue
 
-                if ext in ["jpg", "jpeg", "png", "webp"]:
+                # Deteksi berdasarkan ekstensi atau mimetype
+                if any(ext in media_url for ext in [".jpg", ".jpeg", ".png", ".webp"]):
                     images.append(media_url)
-                elif ext == "mp4":
+                elif ".mp4" in media_url:
                     video_url = media_url
 
             return {
@@ -237,4 +245,5 @@ def video_info(url: str = Query(...)):
         return {
             "error": f"Gagal mengambil info konten: {str(e)}"
         }
+
 
