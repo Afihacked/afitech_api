@@ -26,9 +26,11 @@ IG_SESSION_PATH = os.path.join(os.path.dirname(__file__), "session-afitechapi")
 app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
 
 
+# Versi clean Instagram URL milikmu
 def clean_instagram_url(url: str) -> str:
     parsed = urlparse(url)
     if "instagram.com" in parsed.netloc:
+        # Hilangkan parameter query dan fragment
         cleaned = parsed._replace(query="", fragment="")
         return urlunparse(cleaned)
     return url
@@ -261,17 +263,16 @@ def get_content_info(url: str = Query(...)):
 
     if "instagram.com" in url:
         try:
+            # Ambil shortcode dari URL
             shortcode_match = re.search(r"/p/([A-Za-z0-9_-]+)/", url)
             if not shortcode_match:
                 return JSONResponse(status_code=400, content={"error": "URL Instagram tidak valid."})
 
             shortcode = shortcode_match.group(1)
-
             L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
-            L.load_session_from_file(username=None, filename=IG_SESSION_PATH)
-
             post = instaloader.Post.from_shortcode(L.context, shortcode)
 
+            # Deteksi jenis konten
             if post.is_video:
                 return {
                     "title": post.caption or "Instagram Video",
@@ -293,11 +294,9 @@ def get_content_info(url: str = Query(...)):
             else:
                 return {"error": "Jenis konten Instagram tidak didukung."}
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             return JSONResponse(status_code=500, content={"error": f"Gagal mengambil info Instagram: {str(e)}"})
 
-    # fallback selain Instagram
+    # Fallback jika bukan Instagram (misal YouTube) pakai yt-dlp
     try:
         ydl_opts = {
             'quiet': True,
@@ -318,6 +317,7 @@ def get_content_info(url: str = Query(...)):
                 media_url = entry.get("url")
                 if not media_url:
                     continue
+
                 if any(ext in media_url for ext in [".jpg", ".jpeg", ".png", ".webp"]):
                     images.append(media_url)
                 elif ".mp4" in media_url:
@@ -328,5 +328,6 @@ def get_content_info(url: str = Query(...)):
                 "video": video_url,
                 "images": images
             }
+
     except Exception as e:
         return {"error": f"Gagal mengambil info konten: {str(e)}"}
