@@ -12,6 +12,8 @@ from datetime import datetime
 from fastapi.routing import APIRoute
 from urllib.parse import urlparse, urlunparse
 from fastapi import HTTPException
+from typing import Optional
+from fastapi import Query
 
 app = FastAPI()
 
@@ -39,45 +41,59 @@ def cleanup_dir(path: str):
     except Exception as e:
         print(f"Gagal hapus folder: {path} | Error: {e}")
 
-def download_instagram_photo(url: str, download_dir: str):
-    shortcode = url.strip('/').split("/")[-1]
-    loader = instaloader.Instaloader(
-        download_videos=False,
-        download_video_thumbnails=False,
-        download_geotags=False,
-        download_comments=False,
-        save_metadata=False,
-        compress_json=False,
-        dirname_pattern=download_dir,
-        filename_pattern="{shortcode}",
-    )
-    loader.download_post(instaloader.Post.from_shortcode(loader.context, shortcode), target="")
+def extract_shortcode_from_url(url: str) -> str:
+    match = re.search(r"/p/([A-Za-z0-9_-]+)/", url)
+    if not match:
+        raise ValueError("Shortcode tidak ditemukan di URL Instagram.")
+    return match.group(1)
+
+def download_instagram_photo(url: str, download_dir: str, media_index: Optional[int] = None) -> str:
+    loader = instaloader.Instaloader(dirname_pattern=download_dir, save_metadata=False, download_videos=False, download_comments=False)
+    
+    # Gunakan instaloader untuk mengunduh
+    post = instaloader.Post.from_shortcode(loader.context, extract_shortcode_from_url(url))
+    
+    shortcode = post.shortcode
+
+    # Download semua media (foto-foto slide)
+    for idx, res in enumerate(post.get_sidecar_nodes() if post.typename == 'GraphSidecar' else [post]):
+        image_url = res.display_url if hasattr(res, "display_url") else post.url
+        extension = ".jpg"
+        file_name = f"{shortcode}_{idx}{extension}"
+        file_path = os.path.join(download_dir, file_name)
+
+        # Unduh gambar
+        with open(file_path, "wb") as f:
+            f.write(requests.get(image_url).content)
+
     return shortcode
 
 @app.get("/download/instagram-photo")
 def download_instagram_photo_route(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
-    media: int = Query(0)  # ← tambahkan parameter untuk memilih index media
+    media: Optional[int] = Query(None)  # Tambahkan parameter media opsional
 ):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
 
     try:
-        shortcode = download_instagram_photo(url, download_dir)
+        # ✅ Lempar parameter media ke fungsi utama
+        shortcode = download_instagram_photo(url, download_dir, media)
 
-        files = sorted([
-            f for f in os.listdir(download_dir)
-            if shortcode in f and f.endswith((".jpg", ".jpeg", ".png"))
-        ])
-
-        if not files or media >= len(files):
+        # Temukan semua file gambar
+        files = [f for f in os.listdir(download_dir) if shortcode in f and f.endswith((".jpg", ".jpeg", ".png"))]
+        if not files:
             raise HTTPException(status_code=404, detail="Foto tidak ditemukan")
 
-        photo_path = os.path.join(download_dir, files[media])
-        background_tasks.add_task(cleanup_dir, download_dir)
+        # ✅ Kirim hanya satu file: sesuai index media jika tersedia
+        if media is not None and 0 <= media < len(files):
+            photo_path = os.path.join(download_dir, sorted(files)[media])
+        else:
+            photo_path = os.path.join(download_dir, sorted(files)[0])
 
+        background_tasks.add_task(cleanup_dir, download_dir)
         return FileResponse(photo_path, media_type="image/jpeg", filename=os.path.basename(photo_path))
 
     except Exception as e:
