@@ -3,6 +3,9 @@ FROM python:3.11-slim
 ARG PORT
 ENV PORT=${PORT}
 
+
+RUN apt-get update && apt-get install -y ffmpeg libffi-dev
+
 RUN apt-get update && apt-get install -y ffmpeg curl
 
 # ⬇️ Download yt-dlp terbaru langsung dari GitHub
