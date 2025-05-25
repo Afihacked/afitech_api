@@ -12,6 +12,7 @@ RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o 
 WORKDIR /app
 COPY . /app
 
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 CMD uvicorn main:app --host 0.0.0.0 --port $PORT
