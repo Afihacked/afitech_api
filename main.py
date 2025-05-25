@@ -55,7 +55,11 @@ def download_instagram_photo(url: str, download_dir: str):
     return shortcode
 
 @app.get("/download/instagram-photo")
-def download_instagram_photo_route(background_tasks: BackgroundTasks, url: str = Query(...)):
+def download_instagram_photo_route(
+    background_tasks: BackgroundTasks,
+    url: str = Query(...),
+    media: int = Query(0)  # ← tambahkan parameter untuk memilih index media
+):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
@@ -63,11 +67,15 @@ def download_instagram_photo_route(background_tasks: BackgroundTasks, url: str =
     try:
         shortcode = download_instagram_photo(url, download_dir)
 
-        files = [f for f in os.listdir(download_dir) if shortcode in f and f.endswith((".jpg", ".jpeg", ".png"))]
-        if not files:
+        files = sorted([
+            f for f in os.listdir(download_dir)
+            if shortcode in f and f.endswith((".jpg", ".jpeg", ".png"))
+        ])
+
+        if not files or media >= len(files):
             raise HTTPException(status_code=404, detail="Foto tidak ditemukan")
 
-        photo_path = os.path.join(download_dir, files[0])
+        photo_path = os.path.join(download_dir, files[media])
         background_tasks.add_task(cleanup_dir, download_dir)
 
         return FileResponse(photo_path, media_type="image/jpeg", filename=os.path.basename(photo_path))
