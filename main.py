@@ -50,8 +50,15 @@ def extract_shortcode_from_url(url: str) -> str:
     return match.group(1)
 
 def download_instagram_photo(url: str, download_dir: str, media_index: Optional[int] = None) -> str:
-    loader = instaloader.Instaloader(dirname_pattern=download_dir, save_metadata=False, download_videos=False, download_comments=False)
-    post = instaloader.Post.from_shortcode(loader.context, extract_shortcode_from_url(url))
+    loader = instaloader.Instaloader(
+    dirname_pattern=download_dir,
+    save_metadata=False,
+    download_videos=False,
+    download_comments=False
+)
+loader.load_session_from_file("afitechapi", "session-afitechapi")
+post = instaloader.Post.from_shortcode(loader.context, extract_shortcode_from_url(url))
+
     shortcode = post.shortcode
 
     # Ambil semua node slide atau satu gambar
@@ -282,7 +289,9 @@ def get_content_info(url: str = Query(...)):
 
             shortcode = shortcode_match.group(1)
             L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
-            post = instaloader.Post.from_shortcode(L.context, shortcode)
+L.load_session_from_file("afitechapi", "session-afitechapi")
+post = instaloader.Post.from_shortcode(L.context, shortcode)
+
 
             # Deteksi jenis konten
             if post.is_video:
