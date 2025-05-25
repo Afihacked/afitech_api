@@ -19,15 +19,18 @@ COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
 
 app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
 
+
 def cleanup_dir(path: str):
     try:
         shutil.rmtree(path)
     except Exception as e:
-        print(f"Failed to delete: {e}")
+        print(f"Gagal hapus folder: {path} | Error: {e}")
+
 
 @app.get("/")
 def root():
     return {"message": "YouTube Downloader API is running"}
+
 
 @app.get("/download")
 def download_video(
@@ -46,17 +49,21 @@ def download_video(
 
     ydl_opts = {
         'outtmpl': outtmpl,
-        'format': 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best',
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
         'ffmpeg_location': FFMPEG_PATH,
-        'merge_output_format': format,
+        'merge_output_format': format if format != "mp3" else None,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '192',
-        }] if format == "mp3" else [],
+        }] if format == "mp3" else [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4'
+        }],
         'socket_timeout': 3600,
         'noplaylist': True,
-        'cookiefile': COOKIES_PATH
+        'cookiefile': COOKIES_PATH,
+        'quiet': True,
     }
 
     if download_sections:
@@ -86,6 +93,7 @@ def download_video(
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
         return {"error": f"Gagal mengunduh: {str(e)}"}
+
 
 @app.get("/download/instagram")
 def download_instagram(
@@ -121,13 +129,21 @@ def download_instagram(
         if image_urls:
             downloaded_files = []
             for idx, img_url in enumerate(image_urls):
-                ext = os.path.splitext(img_url)[-1]
-                path = os.path.join(download_dir, f"{session_id}_{idx}{ext}")
-                r = requests.get(img_url, stream=True)
-                with open(path, "wb") as f:
-                    for chunk in r.iter_content(8192):
-                        f.write(chunk)
-                downloaded_files.append(path)
+                try:
+                    ext = os.path.splitext(img_url.split("?")[0])[-1]
+                    if ext.lower() not in [".jpg", ".jpeg", ".png", ".webp"]:
+                        ext = ".jpg"
+                    path = os.path.join(download_dir, f"{session_id}_{idx}{ext}")
+                    r = requests.get(img_url, stream=True, timeout=15)
+                    with open(path, "wb") as f:
+                        for chunk in r.iter_content(8192):
+                            f.write(chunk)
+                    downloaded_files.append(path)
+                except Exception as e:
+                    print(f"Gagal mengunduh gambar: {img_url} | {e}")
+
+            if not downloaded_files:
+                return {"error": "Gagal mengunduh semua gambar"}
 
             if len(downloaded_files) == 1:
                 background_tasks.add_task(cleanup_dir, download_dir)
@@ -163,7 +179,7 @@ def download_instagram(
             video_files = [
                 os.path.join(download_dir, f)
                 for f in os.listdir(download_dir)
-                if f.endswith(".mp4")
+                if os.path.isfile(os.path.join(download_dir, f)) and f.endswith(".mp4")
             ]
 
             if not video_files:
@@ -182,6 +198,7 @@ def download_instagram(
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
         return {"error": f"Gagal mengunduh: {str(e)}"}
+
 
 @app.get("/info")
 def video_info(url: str = Query(...)):
