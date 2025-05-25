@@ -263,17 +263,16 @@ def get_content_info(url: str = Query(...)):
 
     if "instagram.com" in url:
         try:
-            # Ambil shortcode dari URL
-            shortcode_match = re.search(r"/(p|reel|tv)/([A-Za-z0-9_-]+)/", url)
+            shortcode_match = re.search(r"/p/([A-Za-z0-9_-]+)/", url)
             if not shortcode_match:
                 return JSONResponse(status_code=400, content={"error": "URL Instagram tidak valid."})
 
-            shortcode = shortcode_match.group(2)
+            shortcode = shortcode_match.group(1)
 
             L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
+
             post = instaloader.Post.from_shortcode(L.context, shortcode)
 
-            # Deteksi jenis konten
             if post.is_video:
                 return {
                     "title": post.caption or "Instagram Video",
@@ -295,9 +294,11 @@ def get_content_info(url: str = Query(...)):
             else:
                 return {"error": "Jenis konten Instagram tidak didukung."}
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return JSONResponse(status_code=500, content={"error": f"Gagal mengambil info Instagram: {str(e)}"})
 
-    # Fallback jika bukan Instagram (misal YouTube) pakai yt-dlp
+    # fallback selain Instagram
     try:
         ydl_opts = {
             'quiet': True,
@@ -318,7 +319,6 @@ def get_content_info(url: str = Query(...)):
                 media_url = entry.get("url")
                 if not media_url:
                     continue
-
                 if any(ext in media_url for ext in [".jpg", ".jpeg", ".png", ".webp"]):
                     images.append(media_url)
                 elif ".mp4" in media_url:
@@ -329,6 +329,5 @@ def get_content_info(url: str = Query(...)):
                 "video": video_url,
                 "images": images
             }
-
     except Exception as e:
         return {"error": f"Gagal mengambil info konten: {str(e)}"}
