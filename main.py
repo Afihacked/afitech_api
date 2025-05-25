@@ -1,7 +1,6 @@
-from fastapi import FastAPI, Query, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Query, BackgroundTasks, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
 import requests
 import yt_dlp
 import uuid
@@ -12,9 +11,7 @@ import instaloader
 from datetime import datetime
 from fastapi.routing import APIRoute
 from urllib.parse import urlparse, urlunparse
-from fastapi import HTTPException
 from typing import Optional
-from fastapi import Query
 
 app = FastAPI()
 
@@ -27,15 +24,13 @@ COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
 
 app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
 
-# Versi clean Instagram URL milikmu
+
 def clean_instagram_url(url: str) -> str:
     parsed = urlparse(url)
     if "instagram.com" in parsed.netloc:
-        # Hilangkan parameter query dan fragment
         cleaned = parsed._replace(query="", fragment="")
         return urlunparse(cleaned)
     return url
-
 
 def cleanup_dir(path: str):
     try:
@@ -51,55 +46,49 @@ def extract_shortcode_from_url(url: str) -> str:
 
 def download_instagram_photo(url: str, download_dir: str, media_index: Optional[int] = None) -> str:
     loader = instaloader.Instaloader(
-    dirname_pattern=download_dir,
-    save_metadata=False,
-    download_videos=False,
-    download_comments=False
+        dirname_pattern=download_dir,
+        save_metadata=False,
+        download_videos=False,
+        download_comments=False
     )
-    loader.load_session_from_file("afitechapi", "session-afitechapi")
+    loader.context.load_cookiefile(COOKIES_PATH)  # ✅ load cookies langsung
     post = instaloader.Post.from_shortcode(loader.context, extract_shortcode_from_url(url))
 
     shortcode = post.shortcode
-
-    # Ambil semua node slide atau satu gambar
     nodes = post.get_sidecar_nodes() if post.typename == 'GraphSidecar' else [post]
 
     for idx, res in enumerate(nodes):
         if media_index is not None and idx != media_index:
-            continue  # Lewati jika bukan index yang diminta
+            continue
 
         image_url = res.display_url if hasattr(res, "display_url") else post.url
-        extension = ".jpg"
-        file_name = f"{shortcode}_{idx}{extension}"
+        file_name = f"{shortcode}_{idx}.jpg"
         file_path = os.path.join(download_dir, file_name)
 
         with open(file_path, "wb") as f:
             f.write(requests.get(image_url).content)
 
-        break  # Keluar dari loop setelah satu slide
+        break
 
     return shortcode
-    
+
+
 @app.get("/download/instagram-photo")
 def download_instagram_photo_route(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
-    media: Optional[int] = Query(None)  # Tambahkan parameter media opsional
+    media: Optional[int] = Query(None)
 ):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
 
     try:
-        # ✅ Lempar parameter media ke fungsi utama
         shortcode = download_instagram_photo(url, download_dir, media)
-
-        # Temukan semua file gambar
         files = [f for f in os.listdir(download_dir) if shortcode in f and f.endswith((".jpg", ".jpeg", ".png"))]
         if not files:
             raise HTTPException(status_code=404, detail="Foto tidak ditemukan")
 
-        # ✅ Kirim hanya satu file: sesuai index media jika tersedia
         if media is not None and 0 <= media < len(files):
             photo_path = os.path.join(download_dir, sorted(files)[media])
         else:
@@ -162,7 +151,6 @@ def download_video(
         for file in os.listdir(download_dir):
             if file.startswith(session_id) and file.endswith(f".{format}"):
                 filepath = os.path.join(download_dir, file)
-
                 with open(LOG_FILE, "a", encoding="utf-8") as log_file:
                     log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {file}\n")
 
@@ -181,7 +169,6 @@ def download_video(
         return {"error": f"Gagal mengunduh: {str(e)}"}
 
 
-
 @app.get("/download/instagram")
 def download_instagram(
     background_tasks: BackgroundTasks,
@@ -192,7 +179,6 @@ def download_instagram(
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
-
     downloaded_files = []
 
     info_opts = {
@@ -210,13 +196,11 @@ def download_instagram(
         entries = info.get("entries", [info]) if "entries" in info else [info]
 
         for entry in entries:
-            webpage_url = entry.get("webpage_url", url)
+            media_url = entry.get("url")
             ext = entry.get("ext")
             vcodec = entry.get("vcodec", "")
 
-            # Deteksi gambar
             is_image = (vcodec == "none") or (ext in ["jpg", "jpeg", "png", "webp"])
-            media_url = entry.get("url")
 
             if is_image and media_url:
                 try:
@@ -229,7 +213,6 @@ def download_instagram(
                 except Exception as e:
                     print(f"Gagal unduh gambar: {e}")
             else:
-                # Ini video
                 ydl_opts = {
                     'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
                     'format': 'bv*+ba/bestvideo+bestaudio/best',
@@ -240,9 +223,8 @@ def download_instagram(
                     'noplaylist': True,
                 }
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([webpage_url])
+                    ydl.download([entry.get("webpage_url", url)])
 
-        # Tambahkan semua file yang berhasil diunduh ke daftar
         for file in os.listdir(download_dir):
             full_path = os.path.join(download_dir, file)
             if os.path.isfile(full_path):
@@ -276,13 +258,13 @@ def download_instagram(
         shutil.rmtree(download_dir, ignore_errors=True)
         return {"error": f"Gagal mengunduh: {str(e)}"}
 
+
 @app.get("/info")
 def get_content_info(url: str = Query(...)):
     url = clean_instagram_url(url)
 
     if "instagram.com" in url:
         try:
-            # Ambil shortcode dari URL
             shortcode_match = re.search(r"/p/([A-Za-z0-9_-]+)/", url)
             if not shortcode_match:
                 return JSONResponse(status_code=400, content={"error": "URL Instagram tidak valid."})
@@ -290,8 +272,7 @@ def get_content_info(url: str = Query(...)):
             shortcode = shortcode_match.group(1)
 
             L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
-            session_path = "./session-afitechapi"  # ✅ pastikan ini sesuai lokasi file kamu
-            L.load_session_from_file("afitechapi", filename=session_path)
+            L.context.load_cookiefile(COOKIES_PATH)  # ✅ load cookies langsung
 
             post = instaloader.Post.from_shortcode(L.context, shortcode)
 
@@ -320,7 +301,7 @@ def get_content_info(url: str = Query(...)):
             traceback.print_exc()
             return JSONResponse(status_code=500, content={"error": f"Gagal mengambil info Instagram: {str(e)}"})
 
-    # Fallback untuk selain Instagram (misalnya YouTube, Twitter, dll.)
+    # fallback selain Instagram
     try:
         ydl_opts = {
             'quiet': True,
@@ -341,7 +322,6 @@ def get_content_info(url: str = Query(...)):
                 media_url = entry.get("url")
                 if not media_url:
                     continue
-
                 if any(ext in media_url for ext in [".jpg", ".jpeg", ".png", ".webp"]):
                     images.append(media_url)
                 elif ".mp4" in media_url:
@@ -353,12 +333,4 @@ def get_content_info(url: str = Query(...)):
                 "images": images
             }
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": f"Gagal mengambil info dengan yt-dlp: {str(e)}"})
-
-
-    except Exception as e:
         return {"error": f"Gagal mengambil info konten: {str(e)}"}
-
-
