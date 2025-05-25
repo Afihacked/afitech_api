@@ -5,8 +5,8 @@ import yt_dlp
 import uuid
 import os
 import shutil
-import requests
 from datetime import datetime
+from fastapi.routing import APIRoute
 
 app = FastAPI()
 
@@ -25,6 +25,11 @@ def cleanup_dir(path: str):
         shutil.rmtree(path)
     except Exception as e:
         print(f"Gagal hapus folder: {path} | Error: {e}")
+
+
+@app.get("/routes-debug")
+def debug_routes():
+    return [route.path for route in app.routes if isinstance(route, APIRoute)]
 
 
 @app.get("/")
@@ -49,21 +54,17 @@ def download_video(
 
     ydl_opts = {
         'outtmpl': outtmpl,
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
+        'format': 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best',
         'ffmpeg_location': FFMPEG_PATH,
-        'merge_output_format': format if format != "mp3" else None,
+        'merge_output_format': format,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '192',
-        }] if format == "mp3" else [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4'
-        }],
+        }] if format == "mp3" else [],
         'socket_timeout': 3600,
         'noplaylist': True,
-        'cookiefile': COOKIES_PATH,
-        'quiet': True,
+        'cookiefile': COOKIES_PATH
     }
 
     if download_sections:
@@ -99,101 +100,65 @@ def download_video(
 def download_instagram(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
+    format: str = Query("mp4")
 ):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
 
+    outtmpl = os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s")
+
+    ydl_opts = {
+        'outtmpl': outtmpl,
+        'format': 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best',
+        'ffmpeg_location': FFMPEG_PATH,
+        'merge_output_format': format,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }] if format == "mp3" else [],
+        'cookiefile': COOKIES_PATH,
+        'noplaylist': False,
+        'socket_timeout': 3600,
+    }
+
     try:
-        ydl_opts_info = {
-            'quiet': True,
-            'skip_download': True,
-            'forcejson': True,
-            'cookiefile': COOKIES_PATH,
-        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-        with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
-            info = ydl.extract_info(url, download=False)
+        downloaded_files = [
+            os.path.join(download_dir, f)
+            for f in os.listdir(download_dir)
+            if os.path.isfile(os.path.join(download_dir, f))
+        ]
 
-        image_urls = []
-        video_url = None
+        if not downloaded_files:
+            return {"error": "Tidak ada file berhasil diunduh"}
 
-        entries = info.get("entries", [info])
-        for entry in entries:
-            ext = entry.get("ext")
-            if ext in ["jpg", "jpeg", "png", "webp"]:
-                image_urls.append(entry.get("url"))
-            elif ext == "mp4":
-                video_url = entry.get("url")
+        with open(LOG_FILE, "a", encoding="utf-8") as log_file:
+            for f in downloaded_files:
+                log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {os.path.basename(f)}\n")
 
-        if image_urls:
-            downloaded_files = []
-            for idx, img_url in enumerate(image_urls):
-                try:
-                    ext = os.path.splitext(img_url.split("?")[0])[-1]
-                    if ext.lower() not in [".jpg", ".jpeg", ".png", ".webp"]:
-                        ext = ".jpg"
-                    path = os.path.join(download_dir, f"{session_id}_{idx}{ext}")
-                    r = requests.get(img_url, stream=True, timeout=15)
-                    with open(path, "wb") as f:
-                        for chunk in r.iter_content(8192):
-                            f.write(chunk)
-                    downloaded_files.append(path)
-                except Exception as e:
-                    print(f"Gagal mengunduh gambar: {img_url} | {e}")
-
-            if not downloaded_files:
-                return {"error": "Gagal mengunduh semua gambar"}
-
-            if len(downloaded_files) == 1:
-                background_tasks.add_task(cleanup_dir, download_dir)
-                return FileResponse(
-                    downloaded_files[0],
-                    filename=os.path.basename(downloaded_files[0]),
-                    media_type="image/jpeg"
-                )
-            else:
-                urls = [
-                    f"/static/{session_id}/{os.path.basename(f)}"
-                    for f in downloaded_files
-                ]
-                background_tasks.add_task(cleanup_dir, download_dir)
-                return {
-                    "message": "Beberapa gambar berhasil diunduh",
-                    "files": urls
-                }
-
-        elif video_url:
-            outtmpl = os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s")
-            ydl_opts = {
-                'outtmpl': outtmpl,
-                'format': 'best',
-                'ffmpeg_location': FFMPEG_PATH,
-                'cookiefile': COOKIES_PATH,
-                'noplaylist': False,
-            }
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-
-            video_files = [
-                os.path.join(download_dir, f)
-                for f in os.listdir(download_dir)
-                if os.path.isfile(os.path.join(download_dir, f)) and f.endswith(".mp4")
-            ]
-
-            if not video_files:
-                return {"error": "Video tidak ditemukan"}
-
+        if len(downloaded_files) == 1:
+            media_type = "video/mp4" if format == "mp4" else "audio/mpeg"
             background_tasks.add_task(cleanup_dir, download_dir)
             return FileResponse(
-                path=video_files[0],
-                filename=os.path.basename(video_files[0]),
-                media_type="video/mp4"
+                path=downloaded_files[0],
+                filename=os.path.basename(downloaded_files[0]),
+                media_type=media_type
             )
-
         else:
-            return {"error": "Tidak ada media ditemukan"}
+            download_urls = [
+                f"/static/{session_id}/{os.path.basename(f)}"
+                for f in downloaded_files
+            ]
+            background_tasks.add_task(cleanup_dir, download_dir)
+
+            return {
+                "message": "Beberapa file berhasil diunduh",
+                "files": download_urls
+            }
 
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
@@ -205,6 +170,7 @@ def video_info(url: str = Query(...)):
     ydl_opts = {
         'quiet': True,
         'skip_download': True,
+        'simulate': True,
         'forcejson': True,
         'noplaylist': True,
         'cookiefile': COOKIES_PATH,
@@ -214,27 +180,32 @@ def video_info(url: str = Query(...)):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        title = info.get("title", "Tidak diketahui")
-        video_url = None
-        images = []
+            images = []
+            video_url = None
 
-        entries = info.get("entries", [info])
-        for entry in entries:
-            ext = entry.get("ext")
-            if ext == "mp4":
-                video_url = entry.get("url")
-            elif ext in ["jpg", "jpeg", "png", "webp"]:
-                images.append(entry.get("url"))
-            elif entry.get("thumbnails"):
-                thumbs_sorted = sorted(entry["thumbnails"], key=lambda x: x.get("height", 0), reverse=True)
-                if thumbs_sorted:
-                    images.append(thumbs_sorted[0].get("url"))
+            # Cek jika carousel (multiple items)
+            if "entries" in info:
+                for entry in info["entries"]:
+                    # Deteksi image
+                    if entry.get("ext") in ["jpg", "jpeg", "png", "webp"]:
+                        images.append(entry.get("url"))
+                    # Deteksi video
+                    elif entry.get("url") and entry.get("ext") == "mp4":
+                        video_url = entry["url"]
+            else:
+                # Single image
+                if info.get("ext") in ["jpg", "jpeg", "png", "webp"]:
+                    images.append(info.get("url"))
+                elif info.get("url") and info.get("ext") == "mp4":
+                    video_url = info["url"]
 
-        return {
-            "title": title,
-            "video": video_url,
-            "images": images
-        }
+            return {
+                "title": info.get("title", "Tidak diketahui"),
+                "video": video_url,
+                "images": images
+            }
 
     except Exception as e:
-        return {"error": f"Gagal mengambil info: {str(e)}"}
+        return {
+            "error": f"Gagal mengambil info konten: {str(e)}"
+        }
