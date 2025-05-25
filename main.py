@@ -211,7 +211,6 @@ def video_info(url: str = Query(...)):
     ydl_opts = {
         'quiet': True,
         'skip_download': True,
-        'simulate': True,
         'forcejson': True,
         'noplaylist': True,
         'cookiefile': COOKIES_PATH,
@@ -229,20 +228,14 @@ def video_info(url: str = Query(...)):
             local_images = []
             local_video = None
 
-            # Cek format video
             if entry.get("ext") == "mp4" and entry.get("url"):
                 local_video = entry.get("url")
-            # Jika ada gambar (fallback via thumbnail atau url langsung)
-            if entry.get("ext") in ["jpg", "jpeg", "png", "webp"]:
-                if entry.get("url"):
-                    local_images.append(entry["url"])
+            if entry.get("ext") in ["jpg", "jpeg", "png", "webp"] and entry.get("url"):
+                local_images.append(entry["url"])
             elif entry.get("thumbnails"):
-                # Ambil URL gambar terbesar dari thumbnails
-                thumbs = entry["thumbnails"]
-                thumbs_sorted = sorted(thumbs, key=lambda x: x.get("height", 0), reverse=True)
+                thumbs_sorted = sorted(entry["thumbnails"], key=lambda x: x.get("height", 0), reverse=True)
                 if thumbs_sorted:
                     local_images.append(thumbs_sorted[0].get("url"))
-
             return local_video, local_images
 
         if "entries" in info:
@@ -264,3 +257,4 @@ def video_info(url: str = Query(...)):
         return {
             "error": f"Gagal mengambil info konten: {str(e)}"
         }
+
