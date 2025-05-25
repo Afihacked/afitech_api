@@ -172,32 +172,42 @@ def video_info(url: str = Query(...)):
         'skip_download': True,
         'simulate': True,
         'forcejson': True,
+        'noplaylist': True,
         'cookiefile': COOKIES_PATH,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+
             images = []
             video_url = None
 
-            # Deteksi konten gambar
-            if "url" in info and info.get("ext") in ["jpg", "jpeg", "png", "webp"]:
-                images.append(info["url"])
-            elif "entries" in info:  # Carousel post (beberapa gambar/video)
+            # Cek jika carousel (multiple items)
+            if "entries" in info:
                 for entry in info["entries"]:
+                    # Deteksi image
                     if entry.get("ext") in ["jpg", "jpeg", "png", "webp"]:
-                        images.append(entry["url"])
-                    elif entry.get("url"):
+                        images.append(entry.get("url"))
+                    # Deteksi video
+                    elif entry.get("url") and entry.get("ext") == "mp4":
                         video_url = entry["url"]
-            elif "url" in info:
-                video_url = info["url"]
+            else:
+                # Single image
+                if info.get("ext") in ["jpg", "jpeg", "png", "webp"]:
+                    images.append(info.get("url"))
+                elif info.get("url") and info.get("ext") == "mp4":
+                    video_url = info["url"]
 
             return {
                 "title": info.get("title", "Tidak diketahui"),
                 "video": video_url,
                 "images": images
             }
+
     except Exception as e:
-        return {"error": f"Gagal mengambil info konten: {str(e)}"}
+        return {
+            "error": f"Gagal mengambil info konten: {str(e)}"
+        }
+
 
