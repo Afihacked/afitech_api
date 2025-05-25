@@ -166,50 +166,38 @@ def download_instagram(
 
 
 @app.get("/info")
-def video_info(url: str = Query(...), format: str = Query("mp4")):
+def video_info(url: str = Query(...)):
     ydl_opts = {
         'quiet': True,
         'skip_download': True,
         'simulate': True,
         'forcejson': True,
-        'cookiefile': COOKIES_PATH
+        'cookiefile': COOKIES_PATH,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            title = info.get('title', 'Tidak diketahui')
-            formats = info.get('formats', [])
-            thumbnails = info.get('thumbnails', [])
-
-            # Ambil URL video (jika ada)
+            images = []
             video_url = None
-            for f in formats:
-                if f.get('vcodec') != 'none':
-                    video_url = f.get('url')
-                    break
 
-            # Ambil semua gambar (jika ada)
-            image_urls = [t["url"] for t in thumbnails if "url" in t]
-
-            # Hitung estimasi filesize
-            filesize = 0
-            valid_formats = [
-                f for f in formats if f.get('filesize') or f.get('filesize_approx')
-            ]
-            if valid_formats:
-                best_format = max(
-                    valid_formats,
-                    key=lambda f: f.get('filesize') or f.get('filesize_approx', 0)
-                )
-                filesize = best_format.get('filesize') or best_format.get('filesize_approx', 0)
+            # Deteksi konten gambar
+            if "url" in info and info.get("ext") in ["jpg", "jpeg", "png", "webp"]:
+                images.append(info["url"])
+            elif "entries" in info:  # Carousel post (beberapa gambar/video)
+                for entry in info["entries"]:
+                    if entry.get("ext") in ["jpg", "jpeg", "png", "webp"]:
+                        images.append(entry["url"])
+                    elif entry.get("url"):
+                        video_url = entry["url"]
+            elif "url" in info:
+                video_url = info["url"]
 
             return {
-                "title": title,
-                "filesize": filesize,
+                "title": info.get("title", "Tidak diketahui"),
                 "video": video_url,
-                "images": image_urls
+                "images": images
             }
-
     except Exception as e:
-        return {"error": f"Gagal mengambil info video: {str(e)}"}
+        return {"error": f"Gagal mengambil info konten: {str(e)}"}
+
