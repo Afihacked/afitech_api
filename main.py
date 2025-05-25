@@ -7,6 +7,7 @@ import yt_dlp
 import uuid
 import os
 import shutil
+import instaloader
 from datetime import datetime
 from fastapi.routing import APIRoute
 from urllib.parse import urlparse, urlunparse
@@ -38,6 +39,42 @@ def cleanup_dir(path: str):
     except Exception as e:
         print(f"Gagal hapus folder: {path} | Error: {e}")
 
+def download_instagram_photo(url: str, download_dir: str):
+    shortcode = url.strip('/').split("/")[-1]
+    loader = instaloader.Instaloader(
+        download_videos=False,
+        download_video_thumbnails=False,
+        download_geotags=False,
+        download_comments=False,
+        save_metadata=False,
+        compress_json=False,
+        dirname_pattern=download_dir,
+        filename_pattern="{shortcode}",
+    )
+    loader.download_post(instaloader.Post.from_shortcode(loader.context, shortcode), target="")
+    return shortcode
+
+@app.get("/download/instagram-photo")
+def download_instagram_photo_route(background_tasks: BackgroundTasks, url: str = Query(...)):
+    session_id = str(uuid.uuid4())
+    download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
+    os.makedirs(download_dir, exist_ok=True)
+
+    try:
+        shortcode = download_instagram_photo(url, download_dir)
+
+        files = [f for f in os.listdir(download_dir) if shortcode in f and f.endswith((".jpg", ".jpeg", ".png"))]
+        if not files:
+            raise HTTPException(status_code=404, detail="Foto tidak ditemukan")
+
+        photo_path = os.path.join(download_dir, files[0])
+        background_tasks.add_task(cleanup_dir, download_dir)
+
+        return FileResponse(photo_path, media_type="image/jpeg", filename=os.path.basename(photo_path))
+
+    except Exception as e:
+        shutil.rmtree(download_dir, ignore_errors=True)
+        return {"error": f"Gagal unduh foto Instagram: {str(e)}"}
 
 @app.get("/routes-debug")
 def debug_routes():
