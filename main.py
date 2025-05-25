@@ -135,16 +135,16 @@ def download_instagram(
 
         entries = info.get("entries", [info]) if "entries" in info else [info]
 
-for entry in entries:
-    media_url = entry.get("url")
-    if not media_url:
-        continue  # Skip jika tidak ada URL
+        for entry in entries:
+            media_url = entry.get("url")
+            if not media_url:
+                continue  # Skip jika tidak ada URL
 
-    ext = entry.get("ext") or (
-        "jpg" if any(media_url.endswith(x) for x in [".jpg", ".jpeg", ".png", ".webp"]) else "mp4"
-    )
+            ext = entry.get("ext") or (
+                "jpg" if any(media_url.endswith(x) for x in [".jpg", ".jpeg", ".png", ".webp"]) else "mp4"
+            )
 
-    webpage_url = entry.get("webpage_url", url)
+            webpage_url = entry.get("webpage_url", url)
 
             # Download gambar secara manual
             if ext in ["jpg", "jpeg", "png", "webp"]:
@@ -201,7 +201,6 @@ for entry in entries:
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
         return {"error": f"Gagal mengunduh: {str(e)}"}
-
 
 @app.get("/info")
 def video_info(url: str = Query(...)):
