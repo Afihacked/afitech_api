@@ -263,7 +263,7 @@ def get_content_info(url: str = Query(...)):
 
     if "instagram.com" in url:
         try:
-            shortcode_match = re.search(r"/p/([A-Za-z0-9_-]+)/", url)
+            shortcode_match = re.search(r"/(p|reel|tv)/([A-Za-z0-9_-]+)", url)
             if not shortcode_match:
                 return JSONResponse(status_code=400, content={"error": "URL Instagram tidak valid."})
 
