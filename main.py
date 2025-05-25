@@ -51,7 +51,7 @@ def download_instagram_photo(url: str, download_dir: str, media_index: Optional[
         download_videos=False,
         download_comments=False
     )
-    loader.context.load_cookiefile(COOKIES_PATH)  # ✅ load cookies langsung
+    L.load_session_from_file(username=None, filename=COOKIES_PATH)  # ✅ aman
     post = instaloader.Post.from_shortcode(loader.context, extract_shortcode_from_url(url))
 
     shortcode = post.shortcode
@@ -272,7 +272,7 @@ def get_content_info(url: str = Query(...)):
             shortcode = shortcode_match.group(1)
 
             L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
-            L.context.load_cookiefile(COOKIES_PATH)  # ✅ load cookies langsung
+            L.load_session_from_file(username=None, filename=COOKIES_PATH)  # ✅ aman
 
             post = instaloader.Post.from_shortcode(L.context, shortcode)
 
