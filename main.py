@@ -10,6 +10,7 @@ import shutil
 from datetime import datetime
 from fastapi.routing import APIRoute
 from urllib.parse import urlparse, urlunparse
+from fastapi import HTTPException
 
 app = FastAPI()
 
@@ -107,6 +108,7 @@ def download_video(
         return {"error": f"Gagal mengunduh: {str(e)}"}
 
 
+
 @app.get("/download/instagram")
 def download_instagram(
     background_tasks: BackgroundTasks,
@@ -120,7 +122,6 @@ def download_instagram(
 
     downloaded_files = []
 
-    # Tahap 1: Ambil info
     info_opts = {
         'quiet': True,
         'skip_download': True,
@@ -136,39 +137,39 @@ def download_instagram(
         entries = info.get("entries", [info]) if "entries" in info else [info]
 
         for entry in entries:
-    webpage_url = entry.get("webpage_url", url)
-    ext = entry.get("ext")
-    vcodec = entry.get("vcodec", "")
+            webpage_url = entry.get("webpage_url", url)
+            ext = entry.get("ext")
+            vcodec = entry.get("vcodec", "")
 
-    # Jika tidak ada vcodec, kemungkinan besar gambar
-    is_image = vcodec == "none" or ext in ["jpg", "jpeg", "png", "webp"]
+            # Deteksi gambar
+            is_image = (vcodec == "none") or (ext in ["jpg", "jpeg", "png", "webp"])
+            media_url = entry.get("url")
 
-    if is_image:
-        media_url = entry.get("url")
-        if not media_url:
-            continue
-        response = requests.get(media_url, stream=True)
-        if response.status_code == 200:
-            filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
-            with open(filename, "wb") as f:
-                shutil.copyfileobj(response.raw, f)
-            downloaded_files.append(filename)
-    else:
-        # Ini video, unduh pakai yt-dlp
-        ydl_opts = {
-            'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
-            'format': 'bv*+ba/bestvideo+bestaudio/best',
-            'ffmpeg_location': FFMPEG_PATH,
-            'merge_output_format': format,
-            'cookiefile': COOKIES_PATH,
-            'quiet': True,
-            'noplaylist': True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([webpage_url])
+            if is_image and media_url:
+                try:
+                    response = requests.get(media_url, stream=True)
+                    if response.status_code == 200:
+                        filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
+                        with open(filename, "wb") as f:
+                            shutil.copyfileobj(response.raw, f)
+                        downloaded_files.append(filename)
+                except Exception as e:
+                    print(f"Gagal unduh gambar: {e}")
+            else:
+                # Ini video
+                ydl_opts = {
+                    'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
+                    'format': 'bv*+ba/bestvideo+bestaudio/best',
+                    'ffmpeg_location': FFMPEG_PATH,
+                    'merge_output_format': format,
+                    'cookiefile': COOKIES_PATH,
+                    'quiet': True,
+                    'noplaylist': True,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([webpage_url])
 
-
-        # Cari file hasil download
+        # Tambahkan semua file yang berhasil diunduh ke daftar
         for file in os.listdir(download_dir):
             full_path = os.path.join(download_dir, file)
             if os.path.isfile(full_path):
