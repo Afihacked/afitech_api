@@ -181,7 +181,8 @@ def download_instagram(
     downloaded_files = []
 
     info_opts = {
-        'quiet': True,
+        'quiet': False,
+        'verbose': True,
         'skip_download': True,
         'forcejson': True,
         'cookiefile': COOKIES_PATH,
@@ -195,22 +196,22 @@ def download_instagram(
         entries = info.get("entries", [info]) if "entries" in info else [info]
 
         for entry in entries:
-            media_url = entry.get("url")
-            ext = entry.get("ext")
             vcodec = entry.get("vcodec", "")
-
+            ext = entry.get("ext", "")
             is_image = (vcodec == "none") or (ext in ["jpg", "jpeg", "png", "webp"])
 
-            if is_image and media_url:
-                try:
-                    response = requests.get(media_url, stream=True)
-                    if response.status_code == 200:
-                        filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
-                        with open(filename, "wb") as f:
-                            shutil.copyfileobj(response.raw, f)
-                        downloaded_files.append(filename)
-                except Exception as e:
-                    print(f"Gagal unduh gambar: {e}")
+            if is_image:
+                media_url = entry.get("url")
+                if media_url:
+                    try:
+                        response = requests.get(media_url, stream=True)
+                        if response.status_code == 200:
+                            filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
+                            with open(filename, "wb") as f:
+                                shutil.copyfileobj(response.raw, f)
+                            downloaded_files.append(filename)
+                    except Exception as e:
+                        print(f"Gagal unduh gambar: {e}")
             else:
                 ydl_opts = {
                     'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
@@ -218,11 +219,15 @@ def download_instagram(
                     'ffmpeg_location': FFMPEG_PATH,
                     'merge_output_format': format,
                     'cookiefile': COOKIES_PATH,
-                    'quiet': True,
                     'noplaylist': True,
+                    'quiet': False,
+                    'verbose': True,
                 }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([entry.get("webpage_url", url)])
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([entry.get("webpage_url", url)])
+                except Exception as e:
+                    print(f"yt-dlp download error: {e}")
 
         for file in os.listdir(download_dir):
             full_path = os.path.join(download_dir, file)
