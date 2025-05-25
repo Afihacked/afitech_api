@@ -21,6 +21,7 @@ os.makedirs(BASE_DOWNLOAD_DIR, exist_ok=True)
 LOG_FILE = "download_logs.txt"
 FFMPEG_PATH = shutil.which("ffmpeg")
 COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
+IG_SESSION_PATH = os.path.join(os.path.dirname(__file__), "session-afitechapi")
 
 app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
 
@@ -51,7 +52,7 @@ def download_instagram_photo(url: str, download_dir: str, media_index: Optional[
         download_videos=False,
         download_comments=False
     )
-    L.load_session_from_file(username=None, filename=COOKIES_PATH)  # ✅ aman
+    loader.load_session_from_file(username=None, filename=IG_SESSION_PATH)
     post = instaloader.Post.from_shortcode(loader.context, extract_shortcode_from_url(url))
 
     shortcode = post.shortcode
@@ -71,7 +72,6 @@ def download_instagram_photo(url: str, download_dir: str, media_index: Optional[
         break
 
     return shortcode
-
 
 @app.get("/download/instagram-photo")
 def download_instagram_photo_route(
@@ -105,11 +105,9 @@ def download_instagram_photo_route(
 def debug_routes():
     return [route.path for route in app.routes if isinstance(route, APIRoute)]
 
-
 @app.get("/")
 def root():
     return {"message": "YouTube Downloader API is running"}
-
 
 @app.get("/download")
 def download_video(
@@ -167,7 +165,6 @@ def download_video(
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
         return {"error": f"Gagal mengunduh: {str(e)}"}
-
 
 @app.get("/download/instagram")
 def download_instagram(
@@ -258,7 +255,6 @@ def download_instagram(
         shutil.rmtree(download_dir, ignore_errors=True)
         return {"error": f"Gagal mengunduh: {str(e)}"}
 
-
 @app.get("/info")
 def get_content_info(url: str = Query(...)):
     url = clean_instagram_url(url)
@@ -272,7 +268,7 @@ def get_content_info(url: str = Query(...)):
             shortcode = shortcode_match.group(1)
 
             L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
-            L.load_session_from_file(username=None, filename=COOKIES_PATH)  # ✅ aman
+            L.load_session_from_file(username=None, filename=IG_SESSION_PATH)
 
             post = instaloader.Post.from_shortcode(L.context, shortcode)
 
