@@ -7,6 +7,7 @@ import yt_dlp
 import uuid
 import os
 import shutil
+import re
 import instaloader
 from datetime import datetime
 from fastapi.routing import APIRoute
@@ -26,6 +27,7 @@ COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
 
 app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
 
+# Versi clean Instagram URL milikmu
 def clean_instagram_url(url: str) -> str:
     parsed = urlparse(url)
     if "instagram.com" in parsed.netloc:
@@ -268,18 +270,53 @@ def download_instagram(
         return {"error": f"Gagal mengunduh: {str(e)}"}
 
 @app.get("/info")
-def video_info(url: str = Query(...)):
+def get_content_info(url: str = Query(...)):
     url = clean_instagram_url(url)
 
-    ydl_opts = {
-        'quiet': True,
-        'skip_download': True,
-        'forcejson': True,
-        'cookiefile': COOKIES_PATH,
-        'noplaylist': True,
-    }
+    if "instagram.com" in url:
+        try:
+            # Ambil shortcode dari URL
+            shortcode_match = re.search(r"/p/([A-Za-z0-9_-]+)/", url)
+            if not shortcode_match:
+                return JSONResponse(status_code=400, content={"error": "URL Instagram tidak valid."})
 
+            shortcode = shortcode_match.group(1)
+            L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
+            post = instaloader.Post.from_shortcode(L.context, shortcode)
+
+            # Deteksi jenis konten
+            if post.is_video:
+                return {
+                    "title": post.caption or "Instagram Video",
+                    "video": post.video_url,
+                    "images": []
+                }
+            elif post.typename == "GraphImage":
+                return {
+                    "title": post.caption or "Instagram Photo",
+                    "video": None,
+                    "images": [post.url]
+                }
+            elif post.typename == "GraphSidecar":
+                return {
+                    "title": post.caption or "Instagram Carousel",
+                    "video": None,
+                    "images": [node.display_url for node in post.get_sidecar_nodes()]
+                }
+            else:
+                return {"error": "Jenis konten Instagram tidak didukung."}
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"error": f"Gagal mengambil info Instagram: {str(e)}"})
+
+    # Fallback jika bukan Instagram (misal YouTube) pakai yt-dlp
     try:
+        ydl_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'forcejson': True,
+            'cookiefile': COOKIES_PATH,
+            'noplaylist': True,
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -293,7 +330,6 @@ def video_info(url: str = Query(...)):
                 if not media_url:
                     continue
 
-                # Deteksi berdasarkan ekstensi atau mimetype
                 if any(ext in media_url for ext in [".jpg", ".jpeg", ".png", ".webp"]):
                     images.append(media_url)
                 elif ".mp4" in media_url:
@@ -306,8 +342,6 @@ def video_info(url: str = Query(...)):
             }
 
     except Exception as e:
-        return {
-            "error": f"Gagal mengambil info konten: {str(e)}"
-        }
+        return {"error": f"Gagal mengambil info konten: {str(e)}"}
 
 
