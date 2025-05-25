@@ -257,46 +257,36 @@ def download_instagram(
         shutil.rmtree(download_dir, ignore_errors=True)
         return {"error": f"Gagal mengunduh: {str(e)}"}
 
+
 @app.get("/info")
-def get_content_info(url: str = Query(...)):
-    url = clean_instagram_url(url)
+def get_instagram_info(url: str):
+    clean_url = clean_instagram_url(url)
 
-    if "instagram.com" in url:
-        try:
-            shortcode_match = re.search(r"/(p|reel|tv)/([A-Za-z0-9_-]+)", url)
-            if not shortcode_match:
-                return JSONResponse(status_code=400, content={"error": "URL Instagram tidak valid."})
+    shortcode_match = re.search(r'/p/([A-Za-z0-9_-]+)/', clean_url)
+    if not shortcode_match:
+        return JSONResponse(status_code=400, content={"error": "Invalid Instagram URL"})
 
-            shortcode = shortcode_match.group(1)
+    shortcode = shortcode_match.group(1)
 
-            L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
+    try:
+        L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
+        post = instaloader.Post.from_shortcode(L.context, shortcode)
 
-            post = instaloader.Post.from_shortcode(L.context, shortcode)
+        result = {}
 
-            if post.is_video:
-                return {
-                    "title": post.caption or "Instagram Video",
-                    "video": post.video_url,
-                    "images": []
-                }
-            elif post.typename == "GraphImage":
-                return {
-                    "title": post.caption or "Instagram Photo",
-                    "video": None,
-                    "images": [post.url]
-                }
-            elif post.typename == "GraphSidecar":
-                return {
-                    "title": post.caption or "Instagram Carousel",
-                    "video": None,
-                    "images": [node.display_url for node in post.get_sidecar_nodes()]
-                }
-            else:
-                return {"error": "Jenis konten Instagram tidak didukung."}
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return JSONResponse(status_code=500, content={"error": f"Gagal mengambil info Instagram: {str(e)}"})
+        if post.is_video:
+            result["video"] = post.video_url
+        elif post.typename == "GraphImage":
+            result["images"] = [post.url]
+        elif post.typename == "GraphSidecar":
+            result["images"] = [node.display_url for node in post.get_sidecar_nodes()]
+        else:
+            result["images"] = []
+
+        return result
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
     # fallback selain Instagram
     try:
