@@ -49,25 +49,28 @@ def extract_shortcode_from_url(url: str) -> str:
 
 def download_instagram_photo(url: str, download_dir: str, media_index: Optional[int] = None) -> str:
     loader = instaloader.Instaloader(dirname_pattern=download_dir, save_metadata=False, download_videos=False, download_comments=False)
-    
-    # Gunakan instaloader untuk mengunduh
     post = instaloader.Post.from_shortcode(loader.context, extract_shortcode_from_url(url))
-    
     shortcode = post.shortcode
 
-    # Download semua media (foto-foto slide)
-    for idx, res in enumerate(post.get_sidecar_nodes() if post.typename == 'GraphSidecar' else [post]):
+    # Ambil semua node slide atau satu gambar
+    nodes = post.get_sidecar_nodes() if post.typename == 'GraphSidecar' else [post]
+
+    for idx, res in enumerate(nodes):
+        if media_index is not None and idx != media_index:
+            continue  # Lewati jika bukan index yang diminta
+
         image_url = res.display_url if hasattr(res, "display_url") else post.url
         extension = ".jpg"
         file_name = f"{shortcode}_{idx}{extension}"
         file_path = os.path.join(download_dir, file_name)
 
-        # Unduh gambar
         with open(file_path, "wb") as f:
             f.write(requests.get(image_url).content)
 
-    return shortcode
+        break  # Keluar dari loop setelah satu slide
 
+    return shortcode
+    
 @app.get("/download/instagram-photo")
 def download_instagram_photo_route(
     background_tasks: BackgroundTasks,
