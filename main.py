@@ -113,64 +113,63 @@ def download_instagram(
     url: str = Query(...),
     format: str = Query("mp4")
 ):
-    url = clean_instagram_url(url)  # ⬅️ Tambahkan ini
-    
+    url = clean_instagram_url(url)
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
 
-    ydl_opts = {
-        'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
-        'format': 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best',
-        'ffmpeg_location': FFMPEG_PATH,
-        'merge_output_format': format,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }] if format == "mp3" else [],
-        'cookiefile': COOKIES_PATH,
-        'noplaylist': False,
-        'socket_timeout': 3600,
+    downloaded_files = []
+
+    # Tahap 1: Ambil info
+    info_opts = {
         'quiet': True,
         'skip_download': True,
-        'forcejson': True
+        'forcejson': True,
+        'cookiefile': COOKIES_PATH,
+        'noplaylist': True,
     }
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(info_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-            entries = info.get("entries", [info]) if "entries" in info else [info]
+        entries = info.get("entries", [info]) if "entries" in info else [info]
 
-            downloaded_files = []
+        for entry in entries:
+            media_url = entry.get("url")
+            ext = entry.get("ext", "")
+            webpage_url = entry.get("webpage_url", url)
 
-            for entry in entries:
-                media_url = entry.get("url")
-                ext = entry.get("ext", "")
+            # Download gambar secara manual
+            if ext in ["jpg", "jpeg", "png", "webp"]:
+                response = requests.get(media_url, stream=True)
+                if response.status_code == 200:
+                    filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext}")
+                    with open(filename, "wb") as f:
+                        shutil.copyfileobj(response.raw, f)
+                    downloaded_files.append(filename)
+            else:
+                # Tahap 2: Download video pakai yt-dlp
+                ydl_opts = {
+                    'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
+                    'format': 'bv*+ba/bestvideo+bestaudio/best',
+                    'ffmpeg_location': FFMPEG_PATH,
+                    'merge_output_format': format,
+                    'cookiefile': COOKIES_PATH,
+                    'quiet': True,
+                    'noplaylist': True,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([webpage_url])
 
-                if not media_url:
-                    continue
-
-                if ext in ["jpg", "jpeg", "png", "webp"]:
-                    # Download image manually
-                    response = requests.get(media_url, stream=True)
-                    if response.status_code == 200:
-                        filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext}")
-                        with open(filename, "wb") as f:
-                            shutil.copyfileobj(response.raw, f)
-                        downloaded_files.append(filename)
-                else:
-                    # Download video with yt-dlp
-                    ydl.download([entry.get("webpage_url", url)])
-                    # Re-scan folder for new files
-                    for f in os.listdir(download_dir):
-                        full_path = os.path.join(download_dir, f)
-                        if os.path.isfile(full_path):
-                            downloaded_files.append(full_path)
+        # Cari file hasil download
+        for file in os.listdir(download_dir):
+            full_path = os.path.join(download_dir, file)
+            if os.path.isfile(full_path):
+                downloaded_files.append(full_path)
 
         if not downloaded_files:
-            raise HTTPException(status_code=404, detail="Tidak ada file yang berhasil diunduh.")
+            raise HTTPException(status_code=404, detail="Tidak ada file berhasil diunduh.")
 
         with open(LOG_FILE, "a", encoding="utf-8") as log_file:
             for f in downloaded_files:
