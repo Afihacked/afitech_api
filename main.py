@@ -194,6 +194,7 @@ def video_info(url: str = Query(...)):
         'skip_download': True,
         'forcejson': True,
         'cookiefile': COOKIES_PATH,
+        'noplaylist': True,
     }
 
     try:
@@ -201,25 +202,23 @@ def video_info(url: str = Query(...)):
             info = ydl.extract_info(url, download=False)
 
             images = []
-            videos = []
+            video_url = None
 
+            # Jika ada banyak item (carousel post)
             entries = info.get("entries", [info]) if "entries" in info else [info]
 
             for entry in entries:
-                ext = entry.get("ext")
-                file_url = entry.get("url")
-
-                if not file_url:
-                    continue
+                ext = entry.get("ext", "")
+                media_url = entry.get("url")
 
                 if ext in ["jpg", "jpeg", "png", "webp"]:
-                    images.append(file_url)
+                    images.append(media_url)
                 elif ext == "mp4":
-                    videos.append(file_url)
+                    video_url = media_url
 
             return {
                 "title": info.get("title", "Tidak diketahui"),
-                "videos": videos,
+                "video": video_url,
                 "images": images
             }
 
