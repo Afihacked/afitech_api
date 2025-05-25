@@ -267,14 +267,20 @@ def download_instagram(
 def get_instagram_info(url: str):
     clean_url = clean_instagram_url(url)
 
-    shortcode_match = re.search(r'/p/([A-Za-z0-9_-]+)/', clean_url)
+    shortcode_match = re.search(r'/(p|reel|tv)/([A-Za-z0-9_-]+)', clean_url)
     if not shortcode_match:
         return JSONResponse(status_code=400, content={"error": "Invalid Instagram URL"})
 
-    shortcode = shortcode_match.group(1)
+    shortcode = shortcode_match.group(2)
 
     try:
-        L = instaloader.Instaloader(download_pictures=False, download_videos=False, quiet=True)
+        L = instaloader.Instaloader(
+            download_pictures=False,
+            download_videos=False,
+            quiet=True
+        )
+        # Gunakan session login agar bisa akses video reel/private
+        L.load_session_from_file(username=None, filename=IG_SESSION_PATH)
         post = instaloader.Post.from_shortcode(L.context, shortcode)
 
         result = {}
@@ -291,9 +297,9 @@ def get_instagram_info(url: str):
         return result
 
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        print(f"[INFO fallback] Instaloader gagal: {e}")
 
-    # fallback selain Instagram
+    # fallback selain Instagram atau jika session gagal
     try:
         ydl_opts = {
             'quiet': True,
@@ -303,7 +309,7 @@ def get_instagram_info(url: str):
             'noplaylist': True,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(clean_url, download=False)
 
             images = []
             video_url = None
