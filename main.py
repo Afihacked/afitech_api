@@ -136,37 +136,37 @@ def download_instagram(
         entries = info.get("entries", [info]) if "entries" in info else [info]
 
         for entry in entries:
-            media_url = entry.get("url")
-            if not media_url:
-                continue  # Skip jika tidak ada URL
+    webpage_url = entry.get("webpage_url", url)
+    ext = entry.get("ext")
+    vcodec = entry.get("vcodec", "")
 
-            ext = entry.get("ext") or (
-                "jpg" if any(media_url.endswith(x) for x in [".jpg", ".jpeg", ".png", ".webp"]) else "mp4"
-            )
+    # Jika tidak ada vcodec, kemungkinan besar gambar
+    is_image = vcodec == "none" or ext in ["jpg", "jpeg", "png", "webp"]
 
-            webpage_url = entry.get("webpage_url", url)
+    if is_image:
+        media_url = entry.get("url")
+        if not media_url:
+            continue
+        response = requests.get(media_url, stream=True)
+        if response.status_code == 200:
+            filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
+            with open(filename, "wb") as f:
+                shutil.copyfileobj(response.raw, f)
+            downloaded_files.append(filename)
+    else:
+        # Ini video, unduh pakai yt-dlp
+        ydl_opts = {
+            'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
+            'format': 'bv*+ba/bestvideo+bestaudio/best',
+            'ffmpeg_location': FFMPEG_PATH,
+            'merge_output_format': format,
+            'cookiefile': COOKIES_PATH,
+            'quiet': True,
+            'noplaylist': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([webpage_url])
 
-            # Download gambar secara manual
-            if ext in ["jpg", "jpeg", "png", "webp"]:
-                response = requests.get(media_url, stream=True)
-                if response.status_code == 200:
-                    filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext}")
-                    with open(filename, "wb") as f:
-                        shutil.copyfileobj(response.raw, f)
-                    downloaded_files.append(filename)
-            else:
-                # Tahap 2: Download video pakai yt-dlp
-                ydl_opts = {
-                    'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
-                    'format': 'bv*+ba/bestvideo+bestaudio/best',
-                    'ffmpeg_location': FFMPEG_PATH,
-                    'merge_output_format': format,
-                    'cookiefile': COOKIES_PATH,
-                    'quiet': True,
-                    'noplaylist': True,
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([webpage_url])
 
         # Cari file hasil download
         for file in os.listdir(download_dir):
