@@ -241,7 +241,7 @@ def get_info(url: str, format: str = Query("mp4")):
 
     if "instagram.com" in parsed_url.netloc:
         # Proses sebagai Instagram
-        shortcode_match = re.search(r'/(p|reel|tv)/([A-Za-z0-9_-]+)', clean_url)
+        shortcode_match = re.search(r'/(p|reel|tv)/([A-Za-z0-9_-]+)', clean_url + '/')
         if not shortcode_match:
             return JSONResponse(status_code=400, content={"error": "Invalid Instagram URL"})
 
@@ -252,7 +252,7 @@ def get_info(url: str, format: str = Query("mp4")):
                 download_videos=False,
                 quiet=True
             )
-            L.load_session_from_file(username=None, filename=IG_SESSION_PATH)
+            L.load_session_from_file(username="afitechapi", filename=IG_SESSION_PATH)
             post = instaloader.Post.from_shortcode(L.context, shortcode)
 
             result = {}
@@ -291,3 +291,6 @@ def get_info(url: str, format: str = Query("mp4")):
             return {"title": title, "filesize": filesize}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Gagal mengambil info video: {str(e)}"})
+
+print(f"[DEBUG] typename: {post.typename}")
+print(f"[DEBUG] total nodes: {len(post.get_sidecar_nodes()) if post.typename == 'GraphSidecar' else 0}")
