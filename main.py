@@ -235,38 +235,41 @@ def download_instagram(
         return JSONResponse(status_code=500, content={"error": f"Gagal mengunduh: {str(e)}"})
 
 @app.get("/info")
-def get_instagram_info(url: str, format: str = Query("mp4")):
+def get_info(url: str, format: str = Query("mp4")):
     clean_url = clean_instagram_url(url)
-    shortcode_match = re.search(r'/(p|reel|tv)/([A-Za-z0-9_-]+)', clean_url)
-    if not shortcode_match:
-        return JSONResponse(status_code=400, content={"error": "Invalid Instagram URL"})
+    parsed_url = urlparse(clean_url)
 
-    shortcode = shortcode_match.group(2)
+    if "instagram.com" in parsed_url.netloc:
+        # Proses sebagai Instagram
+        shortcode_match = re.search(r'/(p|reel|tv)/([A-Za-z0-9_-]+)', clean_url)
+        if not shortcode_match:
+            return JSONResponse(status_code=400, content={"error": "Invalid Instagram URL"})
 
-    try:
-        L = instaloader.Instaloader(
-            download_pictures=False,
-            download_videos=False,
-            quiet=True
-        )
-        L.load_session_from_file(username=None, filename=IG_SESSION_PATH)
-        post = instaloader.Post.from_shortcode(L.context, shortcode)
+        shortcode = shortcode_match.group(2)
+        try:
+            L = instaloader.Instaloader(
+                download_pictures=False,
+                download_videos=False,
+                quiet=True
+            )
+            L.load_session_from_file(username=None, filename=IG_SESSION_PATH)
+            post = instaloader.Post.from_shortcode(L.context, shortcode)
 
-        result = {}
-        if post.is_video:
-            result["video"] = post.video_url
-        elif post.typename == "GraphImage":
-            result["images"] = [post.url]
-        elif post.typename == "GraphSidecar":
-            result["images"] = [node.display_url for node in post.get_sidecar_nodes()]
-        else:
-            result["images"] = []
+            result = {}
+            if post.is_video:
+                result["video"] = post.video_url
+            elif post.typename == "GraphImage":
+                result["images"] = [post.url]
+            elif post.typename == "GraphSidecar":
+                result["images"] = [node.display_url for node in post.get_sidecar_nodes()]
+            else:
+                result["images"] = []
 
-        return result
-
-    except Exception as e:
-        print(f"[INFO fallback] Instaloader gagal: {e}")
-
+            return result
+        except Exception as e:
+            print(f"[INFO fallback] Instaloader gagal: {e}")
+            # lanjut ke yt-dlp fallback
+    # Untuk selain Instagram (misalnya YouTube)
     try:
         ydl_opts = {
             'quiet': True,
