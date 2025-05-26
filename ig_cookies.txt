@@ -1,15 +1,17 @@
 # Netscape HTTP Cookie File
-# This file is generated manually for use with Instaloader
-.instagram.com	TRUE	/	TRUE	1782792879	csrftoken	cyExTT8ns2Bs7Y0uI_Czgk
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
 .instagram.com	TRUE	/	TRUE	1782215602	mid	aCsbrAALAAH-exuwESVTX1a9zhtS
 .instagram.com	TRUE	/	TRUE	1782493455	datr	DVkvaHO8HgdN1nhB0zO9-9Kq
 .instagram.com	TRUE	/	TRUE	1779469455	ig_did	35C9EFE1-CB01-4BF3-BD61-98AFC9CD6BD7
 .instagram.com	TRUE	/	TRUE	1782493456	ps_l	1
 .instagram.com	TRUE	/	TRUE	1782493456	ps_n	1
-.instagram.com	TRUE	/	TRUE	1748837674	dpr	1.25
-.instagram.com	TRUE	/	TRUE	1779630742	ig_nrcb	1
-.instagram.com	TRUE	/	TRUE	1756008879	ds_user_id	2267444146
 .instagram.com	TRUE	/	TRUE	1748768446	ig_direct_region_hint	"FRC\0542267444146\0541779699645:01f7213109e41483a4bafe5a01b29f31eed21e4d562849e7c3ccd20414b975ee900e5832"
-.instagram.com	TRUE	/	TRUE	1748837674	wd	1536x730
 .instagram.com	TRUE	/	TRUE	1779768875	sessionid	2267444146%3ALBOUQu5yGTT4PU%3A13%3AAYcjb9ZJkPi6bGk32YG02AJXQCTNPigSvYZwW2imFA
-.instagram.com	TRUE	/	TRUE	0	rur	"HIL\0542267444146\0541779768878:01f7f1541b4212e5afb6cd293d39a7ea1a847ca596b96081fbe63a37da9a82b8711b9337"
+.instagram.com	TRUE	/	TRUE	1782793701	csrftoken	cyExTT8ns2Bs7Y0uI_Czgk
+.instagram.com	TRUE	/	TRUE	1756009701	ds_user_id	2267444146
+.instagram.com	TRUE	/	TRUE	1748838496	dpr	1.25
+.instagram.com	TRUE	/	TRUE	1748838496	wd	1536x730
+.instagram.com	TRUE	/	TRUE	0	rur	"HIL\0542267444146\0541779769700:01f7cb5061ab9af3ce9f5d2efb571db1e925eb6ad63d6a823376033307b683e6ef0d7684"
+
