@@ -25,12 +25,9 @@ IG_SESSION_PATH = os.path.join(os.path.dirname(__file__), "session-afitechapi")
 
 app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
 
-
-# Versi clean Instagram URL milikmu
 def clean_instagram_url(url: str) -> str:
     parsed = urlparse(url)
     if "instagram.com" in parsed.netloc:
-        # Hilangkan parameter query dan fragment
         cleaned = parsed._replace(query="", fragment="")
         return urlunparse(cleaned)
     return url
@@ -56,21 +53,17 @@ def download_instagram_photo(url: str, download_dir: str, media_index: Optional[
     )
     loader.load_session_from_file(username=None, filename=IG_SESSION_PATH)
     post = instaloader.Post.from_shortcode(loader.context, extract_shortcode_from_url(url))
-
     shortcode = post.shortcode
     nodes = post.get_sidecar_nodes() if post.typename == 'GraphSidecar' else [post]
 
     for idx, res in enumerate(nodes):
         if media_index is not None and idx != media_index:
             continue
-
         image_url = res.display_url if hasattr(res, "display_url") else post.url
         file_name = f"{shortcode}_{idx}.jpg"
         file_path = os.path.join(download_dir, file_name)
-
         with open(file_path, "wb") as f:
             f.write(requests.get(image_url).content)
-
         break
 
     return shortcode
@@ -90,18 +83,12 @@ def download_instagram_photo_route(
         files = [f for f in os.listdir(download_dir) if shortcode in f and f.endswith((".jpg", ".jpeg", ".png"))]
         if not files:
             raise HTTPException(status_code=404, detail="Foto tidak ditemukan")
-
-        if media is not None and 0 <= media < len(files):
-            photo_path = os.path.join(download_dir, sorted(files)[media])
-        else:
-            photo_path = os.path.join(download_dir, sorted(files)[0])
-
+        photo_path = os.path.join(download_dir, sorted(files)[media or 0])
         background_tasks.add_task(cleanup_dir, download_dir)
         return FileResponse(photo_path, media_type="image/jpeg", filename=os.path.basename(photo_path))
-
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
-        return {"error": f"Gagal unduh foto Instagram: {str(e)}"}
+        return JSONResponse(status_code=500, content={"error": f"Gagal unduh foto Instagram: {str(e)}"})
 
 @app.get("/routes-debug")
 def debug_routes():
@@ -113,121 +100,53 @@ def root():
 
 @app.get("/download")
 def download_video(
-
     background_tasks: BackgroundTasks,
-
     url: str = Query(...),
-
     format: str = Query("mp4"),
-
-    start: str = Query(None, description="Start time in HH:MM:SS or MM:SS"),
-
-    end: str = Query(None, description="End time in HH:MM:SS or MM:SS"),
-
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None)
 ):
-
     session_id = str(uuid.uuid4())
-
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
-
     os.makedirs(download_dir, exist_ok=True)
 
-
-
     outtmpl = os.path.join(download_dir, f"{session_id}.%(ext)s")
-
     download_sections = f"*{start}-{end}" if start and end else None
 
-
-
     ydl_opts = {
-
         'outtmpl': outtmpl,
-
         'format': 'bestaudio/best' if format == "mp3" else 'bestvideo+bestaudio/best',
-
         'ffmpeg_location': FFMPEG_PATH,
-
         'merge_output_format': format,
-
         'postprocessors': [{
-
             'key': 'FFmpegExtractAudio',
-
             'preferredcodec': 'mp3',
-
             'preferredquality': '192',
-
         }] if format == "mp3" else [],
-
         'socket_timeout': 3600,
-
         'noplaylist': True,
-
         'cookiefile': COOKIES_PATH
-
     }
 
-
-
     if download_sections:
-
         ydl_opts['download_sections'] = download_sections
 
-
-
     try:
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-
             ydl.download([url])
 
-
-
         for file in os.listdir(download_dir):
-
             if file.startswith(session_id) and file.endswith(f".{format}"):
-
                 filepath = os.path.join(download_dir, file)
-
-
-
-                # ✅ Tulis log download
-
                 with open(LOG_FILE, "a", encoding="utf-8") as log_file:
-
                     log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {file}\n")
-
-
-
-                # ✅ Tambah tugas background untuk hapus folder
-
                 background_tasks.add_task(cleanup_dir, download_dir)
+                return FileResponse(filepath, media_type="application/octet-stream", filename=file)
 
-
-
-                return FileResponse(
-
-                    filepath,
-
-                    media_type="application/octet-stream",
-
-                    filename=file,
-
-                    background=background_tasks
-
-                )
-
-
-
-        return {"error": f"File .{format} tidak ditemukan setelah download"}
-
+        return JSONResponse(status_code=404, content={"error": f"File .{format} tidak ditemukan"})
     except Exception as e:
-
         shutil.rmtree(download_dir, ignore_errors=True)
-
-        return {"error": f"Gagal mengunduh: {str(e)}"}
-
+        return JSONResponse(status_code=500, content={"error": f"Gagal mengunduh: {str(e)}"})
 
 @app.get("/download/instagram")
 def download_instagram(
@@ -242,8 +161,7 @@ def download_instagram(
     downloaded_files = []
 
     info_opts = {
-        'quiet': False,
-        'verbose': True,
+        'quiet': True,
         'skip_download': True,
         'forcejson': True,
         'cookiefile': COOKIES_PATH,
@@ -254,8 +172,7 @@ def download_instagram(
         with yt_dlp.YoutubeDL(info_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        entries = info.get("entries", [info]) if "entries" in info else [info]
-
+        entries = info.get("entries", [info])
         for entry in entries:
             vcodec = entry.get("vcodec", "")
             ext = entry.get("ext", "")
@@ -281,14 +198,10 @@ def download_instagram(
                     'merge_output_format': format,
                     'cookiefile': COOKIES_PATH,
                     'noplaylist': True,
-                    'quiet': False,
-                    'verbose': True,
+                    'quiet': True,
                 }
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([entry.get("webpage_url", url)])
-                except Exception as e:
-                    print(f"yt-dlp download error: {e}")
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([entry.get("webpage_url", url)])
 
         for file in os.listdir(download_dir):
             full_path = os.path.join(download_dir, file)
@@ -314,20 +227,16 @@ def download_instagram(
         else:
             return {
                 "message": "Beberapa file berhasil diunduh",
-                "files": [
-                    f"/static/{session_id}/{os.path.basename(f)}" for f in downloaded_files
-                ]
+                "files": [f"/static/{session_id}/{os.path.basename(f)}" for f in downloaded_files]
             }
 
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
-        return {"error": f"Gagal mengunduh: {str(e)}"}
-
+        return JSONResponse(status_code=500, content={"error": f"Gagal mengunduh: {str(e)}"})
 
 @app.get("/info")
-def get_instagram_info(url: str):
+def get_instagram_info(url: str, format: str = Query("mp4")):
     clean_url = clean_instagram_url(url)
-
     shortcode_match = re.search(r'/(p|reel|tv)/([A-Za-z0-9_-]+)', clean_url)
     if not shortcode_match:
         return JSONResponse(status_code=400, content={"error": "Invalid Instagram URL"})
@@ -340,12 +249,10 @@ def get_instagram_info(url: str):
             download_videos=False,
             quiet=True
         )
-        # Gunakan session login agar bisa akses video reel/private
         L.load_session_from_file(username=None, filename=IG_SESSION_PATH)
         post = instaloader.Post.from_shortcode(L.context, shortcode)
 
         result = {}
-
         if post.is_video:
             result["video"] = post.video_url
         elif post.typename == "GraphImage":
@@ -360,81 +267,24 @@ def get_instagram_info(url: str):
     except Exception as e:
         print(f"[INFO fallback] Instaloader gagal: {e}")
 
-    # fallback selain Instagram atau jika session gagal
     try:
         ydl_opts = {
-
-        'quiet': True,
-
-        'skip_download': True,
-
-        'simulate': True,
-
-        'forcejson': True,
-
-        'format': 'bestaudio/best' if format == "mp3" else 'bestvideo+bestaudio/best',
-
-        'cookiefile': COOKIES_PATH
-
-    }
-
-
-
-    try:
-
+            'quiet': True,
+            'skip_download': True,
+            'simulate': True,
+            'forcejson': True,
+            'format': 'bestaudio/best' if format == "mp3" else 'bestvideo+bestaudio/best',
+            'cookiefile': COOKIES_PATH
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-
             info = ydl.extract_info(url, download=False)
-
             title = info.get('title', 'Tidak diketahui')
-
-            filesize = 0
-
-
-
-            # Coba ambil ukuran file dari entry format
-
             formats = info.get('formats', [])
-
-            if formats:
-
-                # Filter formats untuk hanya yang memiliki filesize atau filesize_approx yang valid
-
-                valid_formats = [
-
-                    f for f in formats
-
-                    if f.get('filesize') is not None or f.get('filesize_approx') is not None
-
-                ]
-
-
-
-                if valid_formats:
-
-                    # Pilih format dengan filesize terbesar
-
-                    best_format = max(
-
-                        valid_formats,
-
-                        key=lambda f: (f.get('filesize', 0) or f.get('filesize_approx', 0))
-
-                    )
-
-                    filesize = best_format.get('filesize') or best_format.get('filesize_approx', 0)
-
-
-
-            return {
-
-                "title": title,
-
-                "filesize": filesize
-
-            }
-
+            filesize = 0
+            valid_formats = [f for f in formats if f.get('filesize') or f.get('filesize_approx')]
+            if valid_formats:
+                best_format = max(valid_formats, key=lambda f: f.get('filesize', 0) or f.get('filesize_approx', 0))
+                filesize = best_format.get('filesize') or best_format.get('filesize_approx', 0)
+            return {"title": title, "filesize": filesize}
     except Exception as e:
-
-        return {"error": f"Gagal mengambil info video: {str(e)}"}
-
+        return JSONResponse(status_code=500, content={"error": f"Gagal mengambil info video: {str(e)}"})
