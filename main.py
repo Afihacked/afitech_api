@@ -113,60 +113,121 @@ def root():
 
 @app.get("/download")
 def download_video(
+
     background_tasks: BackgroundTasks,
+
     url: str = Query(...),
+
     format: str = Query("mp4"),
-    start: str = Query(None),
-    end: str = Query(None),
+
+    start: str = Query(None, description="Start time in HH:MM:SS or MM:SS"),
+
+    end: str = Query(None, description="End time in HH:MM:SS or MM:SS"),
+
 ):
+
     session_id = str(uuid.uuid4())
+
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
+
     os.makedirs(download_dir, exist_ok=True)
 
+
+
     outtmpl = os.path.join(download_dir, f"{session_id}.%(ext)s")
+
     download_sections = f"*{start}-{end}" if start and end else None
 
+
+
     ydl_opts = {
+
         'outtmpl': outtmpl,
-        'format': 'bv*+ba/bestvideo+bestaudio/best' if format == "mp4" else 'bestaudio/best',
+
+        'format': 'bestaudio/best' if format == "mp3" else 'bestvideo+bestaudio/best',
+
         'ffmpeg_location': FFMPEG_PATH,
+
         'merge_output_format': format,
+
         'postprocessors': [{
+
             'key': 'FFmpegExtractAudio',
+
             'preferredcodec': 'mp3',
+
             'preferredquality': '192',
+
         }] if format == "mp3" else [],
+
         'socket_timeout': 3600,
+
         'noplaylist': True,
+
         'cookiefile': COOKIES_PATH
+
     }
 
+
+
     if download_sections:
+
         ydl_opts['download_sections'] = download_sections
 
+
+
     try:
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+
             ydl.download([url])
 
+
+
         for file in os.listdir(download_dir):
+
             if file.startswith(session_id) and file.endswith(f".{format}"):
+
                 filepath = os.path.join(download_dir, file)
+
+
+
+                # ✅ Tulis log download
+
                 with open(LOG_FILE, "a", encoding="utf-8") as log_file:
+
                     log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {file}\n")
+
+
+
+                # ✅ Tambah tugas background untuk hapus folder
 
                 background_tasks.add_task(cleanup_dir, download_dir)
 
+
+
                 return FileResponse(
+
                     filepath,
+
                     media_type="application/octet-stream",
+
                     filename=file,
+
                     background=background_tasks
+
                 )
 
+
+
         return {"error": f"File .{format} tidak ditemukan setelah download"}
+
     except Exception as e:
+
         shutil.rmtree(download_dir, ignore_errors=True)
+
         return {"error": f"Gagal mengunduh: {str(e)}"}
+
 
 @app.get("/download/instagram")
 def download_instagram(
@@ -302,33 +363,78 @@ def get_instagram_info(url: str):
     # fallback selain Instagram atau jika session gagal
     try:
         ydl_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'forcejson': True,
-            'cookiefile': COOKIES_PATH,
-            'noplaylist': True,
-        }
+
+        'quiet': True,
+
+        'skip_download': True,
+
+        'simulate': True,
+
+        'forcejson': True,
+
+        'format': 'bestaudio/best' if format == "mp3" else 'bestvideo+bestaudio/best',
+
+        'cookiefile': COOKIES_PATH
+
+    }
+
+
+
+    try:
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(clean_url, download=False)
 
-            images = []
-            video_url = None
+            info = ydl.extract_info(url, download=False)
 
-            entries = info.get("entries", [info]) if "entries" in info else [info]
+            title = info.get('title', 'Tidak diketahui')
 
-            for entry in entries:
-                media_url = entry.get("url")
-                if not media_url:
-                    continue
-                if any(ext in media_url for ext in [".jpg", ".jpeg", ".png", ".webp"]):
-                    images.append(media_url)
-                elif ".mp4" in media_url:
-                    video_url = media_url
+            filesize = 0
+
+
+
+            # Coba ambil ukuran file dari entry format
+
+            formats = info.get('formats', [])
+
+            if formats:
+
+                # Filter formats untuk hanya yang memiliki filesize atau filesize_approx yang valid
+
+                valid_formats = [
+
+                    f for f in formats
+
+                    if f.get('filesize') is not None or f.get('filesize_approx') is not None
+
+                ]
+
+
+
+                if valid_formats:
+
+                    # Pilih format dengan filesize terbesar
+
+                    best_format = max(
+
+                        valid_formats,
+
+                        key=lambda f: (f.get('filesize', 0) or f.get('filesize_approx', 0))
+
+                    )
+
+                    filesize = best_format.get('filesize') or best_format.get('filesize_approx', 0)
+
+
 
             return {
-                "title": info.get("title", "Tidak diketahui"),
-                "video": video_url,
-                "images": images
+
+                "title": title,
+
+                "filesize": filesize
+
             }
+
     except Exception as e:
-        return {"error": f"Gagal mengambil info konten: {str(e)}"}
+
+        return {"error": f"Gagal mengambil info video: {str(e)}"}
+
