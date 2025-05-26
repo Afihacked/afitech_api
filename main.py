@@ -21,6 +21,7 @@ os.makedirs(BASE_DOWNLOAD_DIR, exist_ok=True)
 LOG_FILE = "download_logs.txt"
 FFMPEG_PATH = shutil.which("ffmpeg")
 COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
+IG_COOKIES_PATH = os.path.join(os.path.dirname(__file__), "ig_cookies.txt")
 IG_SESSION_PATH = os.path.join(os.path.dirname(__file__), "session-afitechapi")
 
 app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
@@ -164,7 +165,7 @@ def download_instagram(
         'quiet': True,
         'skip_download': True,
         'forcejson': True,
-        'cookiefile': COOKIES_PATH,
+        'cookiefile': IG_COOKIES_PATH,  # <-- pakai cookie IG khusus
         'noplaylist': True,
     }
 
@@ -196,7 +197,7 @@ def download_instagram(
                     'format': 'bv*+ba/bestvideo+bestaudio/best',
                     'ffmpeg_location': FFMPEG_PATH,
                     'merge_output_format': format,
-                    'cookiefile': COOKIES_PATH,
+                    'cookiefile': IG_COOKIES_PATH,  # <-- pakai cookie IG khusus
                     'noplaylist': True,
                     'quiet': True,
                 }
