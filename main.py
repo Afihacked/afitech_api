@@ -291,6 +291,3 @@ def get_info(url: str, format: str = Query("mp4")):
             return {"title": title, "filesize": filesize}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Gagal mengambil info video: {str(e)}"})
-
-print(f"[DEBUG] typename: {post.typename}")
-print(f"[DEBUG] total nodes: {len(post.get_sidecar_nodes()) if post.typename == 'GraphSidecar' else 0}")
