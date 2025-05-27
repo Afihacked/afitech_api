@@ -116,7 +116,7 @@ def download_video(
 
     ydl_opts = {
         'outtmpl': outtmpl,
-        'format': 'bestaudio/best' if format == "mp3" else 'bestvideo+bestaudio/best',
+        'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',  # Maksimal 1080p
         'ffmpeg_location': FFMPEG_PATH,
         'merge_output_format': format,
         'postprocessors': [{
@@ -128,7 +128,6 @@ def download_video(
         'noplaylist': True,
         'cookiefile': COOKIES_PATH
     }
-
     if download_sections:
         ydl_opts['download_sections'] = download_sections
 
