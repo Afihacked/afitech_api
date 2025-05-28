@@ -160,29 +160,28 @@ def download_instagram(
     os.makedirs(download_dir, exist_ok=True)
     downloaded_files = []
 
-    info_opts = {
-        'quiet': True,
-        'skip_download': True,
-        'forcejson': True,
-        'cookiefile': IG_COOKIES_PATH,  # <-- pakai cookie IG khusus
-        'noplaylist': True,
-    }
-
     try:
+        # Ambil info media tanpa login
+        info_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'forcejson': True,
+            'noplaylist': True,
+        }
         with yt_dlp.YoutubeDL(info_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
         entries = info.get("entries", [info])
         for entry in entries:
             vcodec = entry.get("vcodec", "")
-            ext = entry.get("ext", "")
+            ext = entry.get("ext", "mp4")
             is_image = (vcodec == "none") or (ext in ["jpg", "jpeg", "png", "webp"])
 
             if is_image:
                 media_url = entry.get("url")
                 if media_url:
                     try:
-                        response = requests.get(media_url, stream=True)
+                        response = requests.get(media_url, stream=True, timeout=15)
                         if response.status_code == 200:
                             filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
                             with open(filename, "wb") as f:
@@ -196,9 +195,11 @@ def download_instagram(
                     'format': 'bv*+ba/bestvideo+bestaudio/best',
                     'ffmpeg_location': FFMPEG_PATH,
                     'merge_output_format': format,
-                    'cookiefile': IG_COOKIES_PATH,  # <-- pakai cookie IG khusus
                     'noplaylist': True,
                     'quiet': True,
+                    'retries': 5,
+                    'socket_timeout': 15,
+                    'max_filesize': None,
                 }
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([entry.get("webpage_url", url)])
