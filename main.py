@@ -163,11 +163,15 @@ def download_instagram(
     try:
         # Ambil info media tanpa login
         info_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'forcejson': True,
-            'noplaylist': True,
-        }
+        'quiet': True,
+        'skip_download': True,
+        'noplaylist': True,
+        'extractor_args': {
+        'instagram': ['disable_login=True']
+        },
+        'nocheckcertificate': True,
+        'source_address': '0.0.0.0'
+    }
         with yt_dlp.YoutubeDL(info_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -191,16 +195,19 @@ def download_instagram(
                         print(f"Gagal unduh gambar: {e}")
             else:
                 ydl_opts = {
-                    'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
-                    'format': 'bv*+ba/bestvideo+bestaudio/best',
-                    'ffmpeg_location': FFMPEG_PATH,
-                    'merge_output_format': format,
-                    'noplaylist': True,
-                    'quiet': True,
-                    'retries': 5,
-                    'socket_timeout': 15,
-                    'max_filesize': None,
-                }
+    'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
+    'format': 'bv*+ba/bestvideo+bestaudio/best',
+    'ffmpeg_location': FFMPEG_PATH,
+    'merge_output_format': format,
+    'noplaylist': True,
+    'quiet': True,
+    'retries': 5,
+    'extractor_args': {
+        'instagram': ['disable_login=True']
+    },
+    'nocheckcertificate': True,
+    'source_address': '0.0.0.0'
+}
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([entry.get("webpage_url", url)])
 
