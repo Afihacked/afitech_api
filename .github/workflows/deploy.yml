@@ -18,7 +18,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H 103.84.206.147 >> ~/.ssh/known_hosts
+          ssh-keyscan -p 22 -H 103.84.206.147 >> ~/.ssh/known_hosts
 
       - name: Jalankan deploy di VPS
-        run: ssh -i ~/.ssh/id_ed25519 root@103.84.206.147 'bash /root/deploy.sh'
+        run: ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes root@103.84.206.147 'bash /root/deploy.sh'
