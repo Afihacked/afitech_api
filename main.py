@@ -150,14 +150,14 @@ def download_video(
 
 @app.get("/download/instagram")
 def download_instagram(
-background_tasks: BackgroundTasks,
-url: str = Query(...),
-format: str = Query("mp4")
+    background_tasks: BackgroundTasks,
+    url: str = Query(...),
+    format: str = Query("mp4")
 ):
-url = clean_instagram_url(url)
-session_id = str(uuid.uuid4())
-download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
-os.makedirs(download_dir, exist_ok=True)
+    url = clean_instagram_url(url)
+    session_id = str(uuid.uuid4())
+    download_dir = os.path.join(BASE_DOWNLOAD_DIR,      session_id)
+    os.makedirs(download_dir, exist_ok=True)
 downloaded_files = []
 
 info_opts = {  
