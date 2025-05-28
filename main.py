@@ -97,7 +97,7 @@ def debug_routes():
 
 @app.get("/")
 def root():
-    return {"message": "YouTube Downloader API is running"}
+    return {"message": "Afitech Server Is Running Coyyy"}
 
 @app.get("/download")
 def download_video(
