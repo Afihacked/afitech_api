@@ -168,22 +168,28 @@ def download_instagram(
     os.makedirs(download_dir, exist_ok=True)
     downloaded_files = []
 
-    # User-Agent string mirip browser sungguhan
     user_agent = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/122.0.0.0 Safari/537.36"
     )
 
-    info_opts = {
-        'quiet': True,
-        'skip_download': True,
-        'forcejson': True,
+    common_opts = {
         'cookiefile': IG_COOKIES_PATH,
         'noplaylist': True,
+        'quiet': True,
+        'no_geo_bypass': True,
+        'force_generic_extractor': True,
         'http_headers': {
-            'User-Agent': user_agent
+            'User-Agent': user_agent,
+            'Referer': 'https://www.instagram.com/'
         }
+    }
+
+    info_opts = {
+        **common_opts,
+        'skip_download': True,
+        'forcejson': True,
     }
 
     try:
@@ -199,29 +205,21 @@ def download_instagram(
             if is_image:
                 media_url = entry.get("url")
                 if media_url:
-                    try:
-                        response = requests.get(media_url, stream=True, headers={"User-Agent": user_agent})
-                        if response.status_code == 200:
-                            filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
-                            with open(filename, "wb") as f:
-                                shutil.copyfileobj(response.raw, f)
-                            downloaded_files.append(filename)
-                        else:
-                            print(f"Download gagal: {response.status_code} - {media_url}")
-                    except Exception as e:
-                        print(f"Gagal unduh gambar: {e}")
+                    response = requests.get(media_url, stream=True, headers=common_opts['http_headers'])
+                    if response.status_code == 200:
+                        filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
+                        with open(filename, "wb") as f:
+                            shutil.copyfileobj(response.raw, f)
+                        downloaded_files.append(filename)
+                    else:
+                        print(f"Download gagal: {response.status_code} - {media_url}")
             else:
                 ydl_opts = {
+                    **common_opts,
                     'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
                     'format': 'bv*+ba/bestvideo+bestaudio/best',
                     'ffmpeg_location': FFMPEG_PATH,
                     'merge_output_format': format,
-                    'cookiefile': IG_COOKIES_PATH,
-                    'noplaylist': True,
-                    'quiet': True,
-                    'http_headers': {
-                        'User-Agent': user_agent
-                    }
                 }
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([entry.get("webpage_url", url)])
@@ -243,19 +241,20 @@ def download_instagram(
         if len(downloaded_files) == 1:
             media_type = "video/mp4" if downloaded_files[0].endswith(".mp4") else "image/jpeg"
             return FileResponse(
-                path=downloaded_files[0],
-                filename=os.path.basename(downloaded_files[0]),
-                media_type=media_type
+                downloaded_files[0],
+                media_type=media_type,
+                filename=os.path.basename(downloaded_files[0])
             )
-        else:
-            return {
-                "message": "Beberapa file berhasil diunduh",
-                "files": [f"/static/{session_id}/{os.path.basename(f)}" for f in downloaded_files]
-            }
+
+        return JSONResponse({
+            "status": "success",
+            "files": [f"/static/{session_id}/{os.path.basename(f)}" for f in downloaded_files]
+        })
 
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
-        return JSONResponse(status_code=500, content={"error": f"Gagal mengunduh Instagram: {str(e)}"})
+        return JSONResponse(status_code=500, content={"error": f"Gagal unduh dari Instagram: {str(e)}"})
+
 
 
 @app.get("/info")
