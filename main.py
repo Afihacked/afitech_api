@@ -15,6 +15,10 @@ from typing import Optional
 
 app = FastAPI()
 
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse("static/favicon.ico")
+
 BASE_DOWNLOAD_DIR = "downloads"
 os.makedirs(BASE_DOWNLOAD_DIR, exist_ok=True)
 
