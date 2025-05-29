@@ -168,12 +168,22 @@ def download_instagram(
     os.makedirs(download_dir, exist_ok=True)
     downloaded_files = []
 
+    # User-Agent string mirip browser sungguhan
+    user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    )
+
     info_opts = {
         'quiet': True,
         'skip_download': True,
         'forcejson': True,
         'cookiefile': IG_COOKIES_PATH,
         'noplaylist': True,
+        'http_headers': {
+            'User-Agent': user_agent
+        }
     }
 
     try:
@@ -190,12 +200,14 @@ def download_instagram(
                 media_url = entry.get("url")
                 if media_url:
                     try:
-                        response = requests.get(media_url, stream=True)
+                        response = requests.get(media_url, stream=True, headers={"User-Agent": user_agent})
                         if response.status_code == 200:
                             filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
                             with open(filename, "wb") as f:
                                 shutil.copyfileobj(response.raw, f)
                             downloaded_files.append(filename)
+                        else:
+                            print(f"Download gagal: {response.status_code} - {media_url}")
                     except Exception as e:
                         print(f"Gagal unduh gambar: {e}")
             else:
@@ -207,6 +219,9 @@ def download_instagram(
                     'cookiefile': IG_COOKIES_PATH,
                     'noplaylist': True,
                     'quiet': True,
+                    'http_headers': {
+                        'User-Agent': user_agent
+                    }
                 }
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([entry.get("webpage_url", url)])
@@ -240,7 +255,8 @@ def download_instagram(
 
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
-        return JSONResponse(status_code=500, content={"error": f"Gagal mengunduh: {str(e)}"})
+        return JSONResponse(status_code=500, content={"error": f"Gagal mengunduh Instagram: {str(e)}"})
+
 
 @app.get("/info")
 def get_info(url: str, format: str = Query("mp4")):
