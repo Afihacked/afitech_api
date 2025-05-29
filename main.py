@@ -122,22 +122,22 @@ def download_video(
     outtmpl = os.path.join(download_dir, f"{session_id}.%(ext)s")
     download_sections = f"*{start}-{end}" if start and end else None
 
-ydl_opts = {
-    'outtmpl': os.path.join(download_dir, "%(title).80s.%(ext)s"),
-    'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-    'ffmpeg_location': FFMPEG_PATH,
-    'merge_output_format': format,
-    'postprocessors': [{
-        'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'mp3',
-        'preferredquality': '192',
-    }] if format == "mp3" else [],
-    'prefer_ffmpeg': True,
-    'postprocessor_args': ['-preset', 'ultrafast'],
-    'socket_timeout': 3600,
-    'noplaylist': True,
-    'cookiefile': COOKIES_PATH
-}
+    ydl_opts = {
+        'outtmpl': os.path.join(download_dir, "%(title).80s.%(ext)s"),
+        'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+        'ffmpeg_location': FFMPEG_PATH,
+        'merge_output_format': format,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }] if format == "mp3" else [],
+        'prefer_ffmpeg': True,
+        'postprocessor_args': ['-preset', 'ultrafast'],
+        'socket_timeout': 3600,
+        'noplaylist': True,
+        'cookiefile': COOKIES_PATH
+    }
 
     if download_sections:
         ydl_opts['download_sections'] = download_sections
