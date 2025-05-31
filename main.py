@@ -32,6 +32,10 @@ COOKIES_PATH = os.path.join(os.path.dirname(__file__), "cookies.txt")
 IG_COOKIES_PATH = os.path.join(os.path.dirname(__file__), "ig_cookies.txt")
 IG_SESSION_PATH = os.path.join(os.path.dirname(__file__), "session-afitechapi")
 
+# Pastikan FFmpeg tersedia
+if not FFMPEG_PATH:
+    raise RuntimeError("FFmpeg tidak ditemukan. Pastikan sudah terinstall dan ada di PATH.")
+
 app.mount("/static", StaticFiles(directory=BASE_DOWNLOAD_DIR), name="static")
 
 def clean_instagram_url(url: str) -> str:
@@ -110,10 +114,10 @@ def root():
 @app.get("/download")
 def download_video(
     background_tasks: BackgroundTasks,
-    url: str = Query(...),
-    format: str = Query("mp4"),
-    start: Optional[str] = Query(None),
-    end: Optional[str] = Query(None)
+    url: str = Query(..., description="URL video YouTube"),
+    format: str = Query("mp4", description="Format output: mp4 atau mp3"),
+    start: Optional[str] = Query(None, description="Waktu mulai dalam format HH:MM:SS"),
+    end: Optional[str] = Query(None, description="Waktu akhir dalam format HH:MM:SS")
 ):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
@@ -122,11 +126,11 @@ def download_video(
     outtmpl = os.path.join(download_dir, f"{session_id}.%(ext)s")
     download_sections = f"*{start}-{end}" if start and end else None
 
+    # Konfigurasi yt-dlp
     ydl_opts = {
         'outtmpl': outtmpl,
-        'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',  # Maksimal 1080p
         'ffmpeg_location': FFMPEG_PATH,
-        'merge_output_format': format,
+        'format': 'bestaudio/best' if format == 'mp3' else 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -134,8 +138,13 @@ def download_video(
         }] if format == "mp3" else [],
         'socket_timeout': 3600,
         'noplaylist': True,
-        'cookiefile': COOKIES_PATH
+        'cookiefile': COOKIES_PATH,
+        'quiet': True,
     }
+
+    if format != "mp3":
+        ydl_opts['merge_output_format'] = format
+
     if download_sections:
         ydl_opts['download_sections'] = download_sections
 
@@ -143,14 +152,21 @@ def download_video(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
+        # Cari file hasil download berdasarkan format
         for file in os.listdir(download_dir):
             if file.startswith(session_id) and file.endswith(f".{format}"):
                 filepath = os.path.join(download_dir, file)
+
+                # Log sukses
                 with open(LOG_FILE, "a", encoding="utf-8") as log_file:
                     log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {file}\n")
+
+                # Jadwalkan pembersihan direktori
                 background_tasks.add_task(cleanup_dir, download_dir)
+
                 return FileResponse(filepath, media_type="application/octet-stream", filename=file)
 
+        # Jika file tidak ditemukan
         return JSONResponse(status_code=404, content={"error": f"File .{format} tidak ditemukan"})
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
