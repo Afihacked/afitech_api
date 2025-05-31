@@ -111,18 +111,14 @@ def debug_routes():
 def root():
     return {"message": "Afitech Server Is Running Coyyy"}
 
+def seconds_to_hhmmss(seconds: int) -> str:
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02}:{m:02}:{s:02}"
+
 def cut_media(input_path: str, output_path: str, start: str, end: str, is_audio: bool):
-    cmd = [
-        FFMPEG_PATH,
-        '-y',
-        '-i', input_path,
-        '-ss', start,
-        '-to', end,
-        '-c', 'copy',
-        output_path
-    ]
     if is_audio:
-        # Untuk MP3, encoding ulang lebih aman karena MP3 tidak mendukung -c copy dengan baik
         cmd = [
             FFMPEG_PATH,
             '-y',
@@ -134,7 +130,34 @@ def cut_media(input_path: str, output_path: str, start: str, end: str, is_audio:
             '-ab', '192k',
             output_path
         ]
+    else:
+        cmd = [
+            FFMPEG_PATH,
+            '-y',
+            '-i', input_path,
+            '-ss', start,
+            '-to', end,
+            '-c', 'copy',
+            output_path
+        ]
     subprocess.run(cmd, check=True)
+
+def get_clip_times(url: str) -> Optional[tuple[str, str]]:
+    if "youtube.com/clip/" not in url:
+        return None
+
+    try:
+        response = requests.get(url, allow_redirects=True, timeout=10)
+        response.raise_for_status()
+
+        redirected_url = response.url
+        parsed = urlparse(redirected_url)
+        query = parse_qs(parsed.query)
+        start_sec = int(query.get("start", [0])[0])
+        end_sec = int(query.get("end", [0])[0])
+        return seconds_to_hhmmss(start_sec), seconds_to_hhmmss(end_sec)
+    except:
+        return None
 
 @app.get("/download")
 def download_video(
@@ -147,6 +170,12 @@ def download_video(
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
+
+    # Jika start & end kosong, cek apakah ini link clip
+    if not start or not end:
+        clip_times = get_clip_times(url)
+        if clip_times:
+            start, end = clip_times
 
     output_base = os.path.join(download_dir, session_id)
     temp_ext = "mp4" if format == "mp4" else "m4a"
@@ -169,20 +198,18 @@ def download_video(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        # Jika ada start & end, potong pakai FFmpeg
         if start and end:
             cut_media(
                 input_path=temp_path,
                 output_path=final_path,
                 start=start,
                 end=end,
-                is_audio=(format == 'mp3')
+                is_audio=(format == "mp3")
             )
-            os.remove(temp_path)  # Hapus file asli
+            os.remove(temp_path)
         else:
-            final_path = temp_path  # Tidak dipotong
+            final_path = temp_path
 
-        # Log
         filename = os.path.basename(final_path)
         with open(LOG_FILE, "a", encoding="utf-8") as log_file:
             log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {filename}\n")
