@@ -118,42 +118,46 @@ def seconds_to_hhmmss(seconds: int) -> str:
     return f"{h:02}:{m:02}:{s:02}"
 
 def cut_media(input_path: str, output_path: str, start: str, end: str, is_audio: bool):
-    # Hitung durasi potongan
     from datetime import datetime
-    def time_to_seconds(t: str) -> int:
+
+    def time_to_seconds(t: str) -> float:
         x = datetime.strptime(t, "%H:%M:%S")
         return x.hour * 3600 + x.minute * 60 + x.second
 
     duration = time_to_seconds(end) - time_to_seconds(start)
-    if duration <= 0:
-        raise ValueError("Durasi tidak valid")
+    if duration <= 0 or duration > 60:
+        raise ValueError("Durasi harus antara 1–60 detik.")
 
     if is_audio:
         cmd = [
             FFMPEG_PATH,
             '-y',
-            '-ss', start,
             '-i', input_path,
+            '-ss', start,          # seek akurat setelah -i
             '-t', str(duration),
             '-vn',
             '-acodec', 'libmp3lame',
             '-ab', '192k',
+            '-avoid_negative_ts', '1',
             output_path
         ]
     else:
         cmd = [
             FFMPEG_PATH,
             '-y',
-            '-ss', start,
             '-i', input_path,
+            '-ss', start,
             '-t', str(duration),
             '-c:v', 'libx264',
-            '-preset', 'veryfast',
+            '-preset', 'slow',         # lebih akurat frame
             '-crf', '23',
             '-c:a', 'aac',
             '-b:a', '128k',
+            '-movflags', '+faststart',
+            '-avoid_negative_ts', '1',
             output_path
         ]
+
     subprocess.run(cmd, check=True)
 
 def get_clip_times(url: str) -> Optional[tuple[str, str]]:
