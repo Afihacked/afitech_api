@@ -111,63 +111,85 @@ def debug_routes():
 def root():
     return {"message": "Afitech Server Is Running Coyyy"}
 
+def cut_media(input_path: str, output_path: str, start: str, end: str, is_audio: bool):
+    cmd = [
+        FFMPEG_PATH,
+        '-y',
+        '-i', input_path,
+        '-ss', start,
+        '-to', end,
+        '-c', 'copy',
+        output_path
+    ]
+    if is_audio:
+        # Untuk MP3, encoding ulang lebih aman karena MP3 tidak mendukung -c copy dengan baik
+        cmd = [
+            FFMPEG_PATH,
+            '-y',
+            '-i', input_path,
+            '-ss', start,
+            '-to', end,
+            '-vn',
+            '-acodec', 'libmp3lame',
+            '-ab', '192k',
+            output_path
+        ]
+    subprocess.run(cmd, check=True)
+
 @app.get("/download")
 def download_video(
     background_tasks: BackgroundTasks,
-    url: str = Query(..., description="URL video YouTube"),
-    format: str = Query("mp4", description="Format output: mp4 atau mp3"),
-    start: Optional[str] = Query(None, description="Waktu mulai dalam format HH:MM:SS"),
-    end: Optional[str] = Query(None, description="Waktu akhir dalam format HH:MM:SS")
+    url: str = Query(...),
+    format: str = Query("mp4"),
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None)
 ):
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
 
-    outtmpl = os.path.join(download_dir, f"{session_id}.%(ext)s")
-    download_sections = f"*{start}-{end}" if start and end else None
+    output_base = os.path.join(download_dir, session_id)
+    temp_ext = "mp4" if format == "mp4" else "m4a"
+    temp_path = f"{output_base}.{temp_ext}"
+    final_path = f"{output_base}.{format}"
 
-    # Konfigurasi yt-dlp
     ydl_opts = {
-        'outtmpl': outtmpl,
+        'outtmpl': temp_path,
         'ffmpeg_location': FFMPEG_PATH,
         'format': 'bestaudio/best' if format == 'mp3' else 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }] if format == "mp3" else [],
+        'merge_output_format': temp_ext,
+        'postprocessors': [],
         'socket_timeout': 3600,
         'noplaylist': True,
         'cookiefile': COOKIES_PATH,
         'quiet': True,
     }
 
-    if format != "mp3":
-        ydl_opts['merge_output_format'] = format
-
-    if download_sections:
-        ydl_opts['download_sections'] = download_sections
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        # Cari file hasil download berdasarkan format
-        for file in os.listdir(download_dir):
-            if file.startswith(session_id) and file.endswith(f".{format}"):
-                filepath = os.path.join(download_dir, file)
+        # Jika ada start & end, potong pakai FFmpeg
+        if start and end:
+            cut_media(
+                input_path=temp_path,
+                output_path=final_path,
+                start=start,
+                end=end,
+                is_audio=(format == 'mp3')
+            )
+            os.remove(temp_path)  # Hapus file asli
+        else:
+            final_path = temp_path  # Tidak dipotong
 
-                # Log sukses
-                with open(LOG_FILE, "a", encoding="utf-8") as log_file:
-                    log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {file}\n")
+        # Log
+        filename = os.path.basename(final_path)
+        with open(LOG_FILE, "a", encoding="utf-8") as log_file:
+            log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {filename}\n")
 
-                # Jadwalkan pembersihan direktori
-                background_tasks.add_task(cleanup_dir, download_dir)
+        background_tasks.add_task(cleanup_dir, download_dir)
+        return FileResponse(final_path, media_type="application/octet-stream", filename=filename)
 
-                return FileResponse(filepath, media_type="application/octet-stream", filename=file)
-
-        # Jika file tidak ditemukan
-        return JSONResponse(status_code=404, content={"error": f"File .{format} tidak ditemukan"})
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
         return JSONResponse(status_code=500, content={"error": f"Gagal mengunduh: {str(e)}"})
