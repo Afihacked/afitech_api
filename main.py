@@ -118,13 +118,23 @@ def seconds_to_hhmmss(seconds: int) -> str:
     return f"{h:02}:{m:02}:{s:02}"
 
 def cut_media(input_path: str, output_path: str, start: str, end: str, is_audio: bool):
+    # Hitung durasi potongan
+    from datetime import datetime
+    def time_to_seconds(t: str) -> int:
+        x = datetime.strptime(t, "%H:%M:%S")
+        return x.hour * 3600 + x.minute * 60 + x.second
+
+    duration = time_to_seconds(end) - time_to_seconds(start)
+    if duration <= 0:
+        raise ValueError("Durasi tidak valid")
+
     if is_audio:
         cmd = [
             FFMPEG_PATH,
             '-y',
-            '-i', input_path,
             '-ss', start,
-            '-to', end,
+            '-i', input_path,
+            '-t', str(duration),
             '-vn',
             '-acodec', 'libmp3lame',
             '-ab', '192k',
@@ -134,10 +144,14 @@ def cut_media(input_path: str, output_path: str, start: str, end: str, is_audio:
         cmd = [
             FFMPEG_PATH,
             '-y',
-            '-i', input_path,
             '-ss', start,
-            '-to', end,
-            '-c', 'copy',
+            '-i', input_path,
+            '-t', str(duration),
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '128k',
             output_path
         ]
     subprocess.run(cmd, check=True)
