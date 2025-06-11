@@ -337,8 +337,6 @@ def download_instagram(
                 media_type=media_type,
                 filename=os.path.basename(downloaded_files[0])
             )
-
-        return JSONResponse({@app.get("/download/instagram")
 def download_instagram(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
