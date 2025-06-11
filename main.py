@@ -243,100 +243,11 @@ def download_video(
         shutil.rmtree(download_dir, ignore_errors=True)
         return JSONResponse(status_code=500, content={"error": f"Gagal mengunduh: {str(e)}"})
 
+# (semua import tetap sama)
+
+# ... kode sebelumnya tetap ...
+
 @app.get("/download/instagram")
-def download_instagram(
-    background_tasks: BackgroundTasks,
-    url: str = Query(...),
-    format: str = Query("mp4")
-):
-    url = clean_instagram_url(url)
-    session_id = str(uuid.uuid4())
-    download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
-    os.makedirs(download_dir, exist_ok=True)
-    downloaded_files = []
-
-    user_agent = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
-    )
-
-    headers = {
-        'User-Agent': user_agent,
-        'Referer': 'https://www.instagram.com/',
-        # 'Cookie': get_cookie_header()  <-- dihapus
-    }
-
-    common_opts = {
-        'cookiefile': IG_COOKIES_PATH,
-        'noplaylist': True,
-        'quiet': True,
-        'no_geo_bypass': True,
-        'http_headers': {
-            'User-Agent': user_agent,
-            'Referer': 'https://www.instagram.com/',
-        },
-    }
-
-    info_opts = {
-        **common_opts,
-        'skip_download': True,
-        'forcejson': True,
-    }
-
-    try:
-        with yt_dlp.YoutubeDL(info_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-
-        entries = info.get("entries", [info])
-        for entry in entries:
-            vcodec = entry.get("vcodec", "")
-            ext = entry.get("ext", "")
-            is_image = (vcodec == "none") or (ext in ["jpg", "jpeg", "png", "webp"])
-
-            if is_image:
-                media_url = entry.get("url")
-                if media_url:
-                    response = requests.get(media_url, stream=True, headers=headers)
-                    if response.status_code == 200:
-                        filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
-                        with open(filename, "wb") as f:
-                            shutil.copyfileobj(response.raw, f)
-                        downloaded_files.append(filename)
-                    else:
-                        print(f"Download gagal: {response.status_code} - {media_url}")
-            else:
-                ydl_opts = {
-                    **common_opts,
-                    'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
-                    'format': 'bv*+ba/bestvideo+bestaudio/best',
-                    'ffmpeg_location': FFMPEG_PATH,
-                    'merge_output_format': format,
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([entry.get("webpage_url", url)])
-
-        for file in os.listdir(download_dir):
-            full_path = os.path.join(download_dir, file)
-            if os.path.isfile(full_path):
-                downloaded_files.append(full_path)
-
-        if not downloaded_files:
-            raise HTTPException(status_code=404, detail="Tidak ada file berhasil diunduh.")
-
-        with open(LOG_FILE, "a", encoding="utf-8") as log_file:
-            for f in downloaded_files:
-                log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {os.path.basename(f)}\n")
-
-        background_tasks.add_task(cleanup_dir, download_dir)
-
-        if len(downloaded_files) == 1:
-            media_type = "video/mp4" if downloaded_files[0].endswith(".mp4") else "image/jpeg"
-            return FileResponse(
-                downloaded_files[0],
-                media_type=media_type,
-                filename=os.path.basename(downloaded_files[0])
-            )
 def download_instagram(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
