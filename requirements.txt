@@ -1,5 +1,5 @@
-fastapi
-uvicorn
-yt-dlp
-requests
-instaloader
+fastapi==0.110.2
+uvicorn[standard]==0.29.0
+yt-dlp==2024.05.27
+requests==2.32.2
+instaloader==4.11
