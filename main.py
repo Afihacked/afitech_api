@@ -257,16 +257,30 @@ def download_instagram(
         "Chrome/122.0.0.0 Safari/537.36"
     )
 
+    def get_cookie_header() -> str:
+        cookie_pairs = []
+        with open(IG_COOKIES_PATH, 'r', encoding='utf-8') as f:
+            for line in f:
+                if not line.startswith('#') and '\t' in line:
+                    parts = line.strip().split('\t')
+                    if len(parts) >= 7:
+                        name, value = parts[5], parts[6]
+                        cookie_pairs.append(f"{name}={value}")
+        return "; ".join(cookie_pairs)
+
+    headers = {
+        'User-Agent': user_agent,
+        'Referer': 'https://www.instagram.com/',
+        'Cookie': get_cookie_header()
+    }
+
     common_opts = {
         'cookiefile': IG_COOKIES_PATH,
         'noplaylist': True,
         'quiet': True,
         'no_geo_bypass': True,
-        'force_generic_extractor': True,
-        'http_headers': {
-            'User-Agent': user_agent,
-            'Referer': 'https://www.instagram.com/'
-        }
+        # 'force_generic_extractor': True,  <-- dihapus agar yt-dlp pakai extractor Instagram asli
+        'http_headers': headers,
     }
 
     info_opts = {
@@ -288,7 +302,7 @@ def download_instagram(
             if is_image:
                 media_url = entry.get("url")
                 if media_url:
-                    response = requests.get(media_url, stream=True, headers=common_opts['http_headers'])
+                    response = requests.get(media_url, stream=True, headers=headers)
                     if response.status_code == 200:
                         filename = os.path.join(download_dir, f"{uuid.uuid4()}.{ext or 'jpg'}")
                         with open(filename, "wb") as f:
