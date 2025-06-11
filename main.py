@@ -10,8 +10,9 @@ import re
 import instaloader
 from datetime import datetime
 from fastapi.routing import APIRoute
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse, parse_qs
 from typing import Optional
+import subprocess
 
 app = FastAPI()
 
