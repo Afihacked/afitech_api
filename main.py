@@ -257,21 +257,10 @@ def download_instagram(
         "Chrome/122.0.0.0 Safari/537.36"
     )
 
-    def get_cookie_header() -> str:
-        cookie_pairs = []
-        with open(IG_COOKIES_PATH, 'r', encoding='utf-8') as f:
-            for line in f:
-                if not line.startswith('#') and '\t' in line:
-                    parts = line.strip().split('\t')
-                    if len(parts) >= 7:
-                        name, value = parts[5], parts[6]
-                        cookie_pairs.append(f"{name}={value}")
-        return "; ".join(cookie_pairs)
-
     headers = {
         'User-Agent': user_agent,
         'Referer': 'https://www.instagram.com/',
-        'Cookie': get_cookie_header()
+        # 'Cookie': get_cookie_header()  <-- dihapus
     }
 
     common_opts = {
@@ -279,8 +268,10 @@ def download_instagram(
         'noplaylist': True,
         'quiet': True,
         'no_geo_bypass': True,
-        # 'force_generic_extractor': True,  <-- dihapus agar yt-dlp pakai extractor Instagram asli
-        'http_headers': headers,
+        'http_headers': {
+            'User-Agent': user_agent,
+            'Referer': 'https://www.instagram.com/',
+        },
     }
 
     info_opts = {
@@ -351,6 +342,7 @@ def download_instagram(
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
         return JSONResponse(status_code=500, content={"error": f"Gagal unduh dari Instagram: {str(e)}"})
+
 
 
 
