@@ -248,96 +248,96 @@ def download_video(
 
 # ... kode sebelumnya tetap ...
 
+from fastapi import BackgroundTasks, Query, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
+import yt_dlp
+import os
+import uuid
+import requests
+from datetime import datetime
+import shutil
+import re
+
 @app.get("/download/instagram")
 def download_instagram(
     background_tasks: BackgroundTasks,
     url: str = Query(...),
     format: str = Query("mp4")
 ):
-    url = clean_instagram_url(url)
     session_id = str(uuid.uuid4())
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
     downloaded_files = []
 
-    user_agent = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
-    )
+    def log_download(file: str):
+        with open(LOG_FILE, "a", encoding="utf-8") as log_file:
+            log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {os.path.basename(file)}\n")
+
+    def is_valid_instagram_url(url: str) -> bool:
+        return "instagram.com" in url and re.search(r"/(reel|p|tv)/", url)
+
+    def is_cookie_valid() -> bool:
+        try:
+            ydl_opts = {
+                "cookiefile": IG_COOKIES_PATH,
+                "quiet": True,
+                "forcejson": True,
+                "skip_download": True
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.extract_info("https://www.instagram.com/accounts/edit/", download=False)
+            return True
+        except Exception as e:
+            return False
+
+    def download_with_yt_dlp(headers, use_cookie=True):
+        ydl_opts = {
+            "outtmpl": os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
+            "format": "bv*+ba/bestvideo+bestaudio/best",
+            "ffmpeg_location": FFMPEG_PATH,
+            "merge_output_format": format,
+            "quiet": True,
+            "noplaylist": True,
+            "no_warnings": True,
+            "http_headers": headers,
+        }
+        if use_cookie:
+            ydl_opts["cookiefile"] = IG_COOKIES_PATH
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            return ydl.download([url])
+
+    if not is_valid_instagram_url(url):
+        shutil.rmtree(download_dir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail="URL Instagram tidak valid.")
 
     headers = {
-        'User-Agent': user_agent,
-        'Referer': 'https://www.instagram.com/',
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Referer": "https://www.instagram.com/",
     }
-
-    common_opts = {
-        'cookiefile': IG_COOKIES_PATH,
-        'noplaylist': True,
-        'quiet': True,
-        'no_geo_bypass': True,
-        'http_headers': headers,
-    }
-
-    def try_download_with_ytdlp():
-        info_opts = {
-            **common_opts,
-            'skip_download': True,
-            'forcejson': True,
-        }
-        with yt_dlp.YoutubeDL(info_opts) as ydl:
-            return ydl.extract_info(url, download=False)
 
     try:
-        try:
-            info = try_download_with_ytdlp()
-        except Exception as e:
-            # Fallback tanpa cookie jika error login
-            print(f"[YT-DLP fallback] Gagal akses pakai cookie: {e}")
-            common_opts.pop("cookiefile", None)
-            info = try_download_with_ytdlp()
+        # 1. Coba dengan cookie
+        cookie_ok = is_cookie_valid()
+        if cookie_ok:
+            try:
+                download_with_yt_dlp(headers, use_cookie=True)
+            except Exception as e:
+                print(f"[Instagram] Gagal dengan cookie: {e}")
+                download_with_yt_dlp(headers, use_cookie=False)
+        else:
+            print("[Instagram] Cookie tidak valid, fallback tanpa cookie")
+            download_with_yt_dlp(headers, use_cookie=False)
 
-        entries = info.get("entries", [info])
-        for entry in entries:
-            ext = entry.get("ext", "")
-            vcodec = entry.get("vcodec", "")
-            media_url = entry.get("url")
-
-            if not media_url:
-                continue
-
-            is_image = (vcodec == "none") or ext in ["jpg", "jpeg", "png", "webp"]
-
-            if is_image:
-                response = requests.get(media_url, stream=True, headers=headers)
-                if response.status_code == 200:
-                    file_ext = ext or "jpg"
-                    filename = os.path.join(download_dir, f"{uuid.uuid4()}.{file_ext}")
-                    with open(filename, "wb") as f:
-                        shutil.copyfileobj(response.raw, f)
-                    downloaded_files.append(filename)
-            else:
-                ydl_opts = {
-                    **common_opts,
-                    'outtmpl': os.path.join(download_dir, f"{session_id}_%(title).70s.%(ext)s"),
-                    'format': 'bv*+ba/bestvideo+bestaudio/best',
-                    'ffmpeg_location': FFMPEG_PATH,
-                    'merge_output_format': format,
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([entry.get("webpage_url", url)])
-
+        # Kumpulkan file hasil download
         for file in os.listdir(download_dir):
-            full_path = os.path.join(download_dir, file)
-            if os.path.isfile(full_path):
-                downloaded_files.append(full_path)
+            path = os.path.join(download_dir, file)
+            if os.path.isfile(path):
+                downloaded_files.append(path)
+                log_download(path)
 
         if not downloaded_files:
-            raise HTTPException(status_code=404, detail="Tidak ada file berhasil diunduh.")
-
-        with open(LOG_FILE, "a", encoding="utf-8") as log_file:
-            for f in downloaded_files:
-                log_file.write(f"{datetime.now().isoformat()} | {url} | {format} | {os.path.basename(f)}\n")
+            raise HTTPException(status_code=404, detail="Media Instagram tidak ditemukan.")
 
         background_tasks.add_task(cleanup_dir, download_dir)
 
@@ -356,7 +356,12 @@ def download_instagram(
 
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
-        return JSONResponse(status_code=500, content={"error": f"Gagal unduh dari Instagram: {str(e)}"})
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Gagal mengunduh dari Instagram: {str(e)}"}
+        )
+
+
 
 
 @app.get("/info")
