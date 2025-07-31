@@ -279,15 +279,23 @@ def download_instagram(
         'http_headers': headers,
     }
 
-    info_opts = {
-        **common_opts,
-        'skip_download': True,
-        'forcejson': True,
-    }
+    def try_download_with_ytdlp():
+        info_opts = {
+            **common_opts,
+            'skip_download': True,
+            'forcejson': True,
+        }
+        with yt_dlp.YoutubeDL(info_opts) as ydl:
+            return ydl.extract_info(url, download=False)
 
     try:
-        with yt_dlp.YoutubeDL(info_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        try:
+            info = try_download_with_ytdlp()
+        except Exception as e:
+            # Fallback tanpa cookie jika error login
+            print(f"[YT-DLP fallback] Gagal akses pakai cookie: {e}")
+            common_opts.pop("cookiefile", None)
+            info = try_download_with_ytdlp()
 
         entries = info.get("entries", [info])
         for entry in entries:
@@ -349,8 +357,6 @@ def download_instagram(
     except Exception as e:
         shutil.rmtree(download_dir, ignore_errors=True)
         return JSONResponse(status_code=500, content={"error": f"Gagal unduh dari Instagram: {str(e)}"})
-
-
 
 
 @app.get("/info")
