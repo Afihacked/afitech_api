@@ -203,13 +203,11 @@ def download_video(
     download_dir = os.path.join(BASE_DOWNLOAD_DIR, session_id)
     os.makedirs(download_dir, exist_ok=True)
 
-    # Jika start & end kosong, cek apakah ini link clip
-    # Jika start & end kosong, cek apakah ini link clip
-if (not start or not end) and "youtube.com/clip/" in url:
-    clip_times = get_clip_times(url)
-    if clip_times:
-        start, end = clip_times
-
+    # ✅ Pindahkan ke dalam fungsi dan beri indentasi
+    if (not start or not end) and "youtube.com/clip/" in url:
+        clip_times = get_clip_times(url)
+        if clip_times:
+            start, end = clip_times
 
     output_base = os.path.join(download_dir, session_id)
     temp_ext = "mp4" if format == "mp4" else "m4a"
@@ -255,20 +253,10 @@ if (not start or not end) and "youtube.com/clip/" in url:
         shutil.rmtree(download_dir, ignore_errors=True)
         return JSONResponse(status_code=500, content={"error": f"Gagal mengunduh: {str(e)}"})
 
+
 # (semua import tetap sama)
 
 # ... kode sebelumnya tetap ...
-
-from fastapi import BackgroundTasks, Query, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
-import yt_dlp
-import os
-import uuid
-import requests
-from datetime import datetime
-import shutil
-import re
-
 @app.get("/download/instagram")
 def download_instagram(
     background_tasks: BackgroundTasks,
