@@ -166,21 +166,30 @@ def cut_media(input_path: str, output_path: str, start: str, end: str, is_audio:
     subprocess.run(cmd, check=True)
 
 def get_clip_times(url: str) -> Optional[tuple[str, str]]:
-    if "youtube.com/clip/" not in url:
-        return None
-
     try:
-        response = requests.get(url, allow_redirects=True, timeout=10)
-        response.raise_for_status()
+        ydl_opts = {
+            'quiet': True,
+            'forcejson': True,
+            'skip_download': True
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
 
-        redirected_url = response.url
-        parsed = urlparse(redirected_url)
-        query = parse_qs(parsed.query)
-        start_sec = int(query.get("start", [0])[0])
-        end_sec = int(query.get("end", [0])[0])
-        return seconds_to_hhmmss(start_sec), seconds_to_hhmmss(end_sec)
-    except:
+        # Dapatkan timestamp dari klip
+        start_time = info.get('start_time')
+        end_time = info.get('end_time')
+
+        if start_time is not None and end_time is not None:
+            return seconds_to_hhmmss(int(start_time)), seconds_to_hhmmss(int(end_time))
+        elif start_time is not None and info.get("duration"):
+            end_time = start_time + int(info["duration"])
+            return seconds_to_hhmmss(int(start_time)), seconds_to_hhmmss(int(end_time))
+        else:
+            return None
+    except Exception as e:
+        print(f"[clip parser error] {e}")
         return None
+
 
 @app.get("/download")
 def download_video(
@@ -195,10 +204,12 @@ def download_video(
     os.makedirs(download_dir, exist_ok=True)
 
     # Jika start & end kosong, cek apakah ini link clip
-    if not start or not end:
-        clip_times = get_clip_times(url)
-        if clip_times:
-            start, end = clip_times
+    # Jika start & end kosong, cek apakah ini link clip
+if (not start or not end) and "youtube.com/clip/" in url:
+    clip_times = get_clip_times(url)
+    if clip_times:
+        start, end = clip_times
+
 
     output_base = os.path.join(download_dir, session_id)
     temp_ext = "mp4" if format == "mp4" else "m4a"
