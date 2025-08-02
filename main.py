@@ -214,17 +214,17 @@ def download_video(
     temp_path = f"{output_base}.{temp_ext}"
     final_path = f"{output_base}.{format}"
 
-   ydl_opts = {
-    'outtmpl': temp_path,
-    'ffmpeg_location': FFMPEG_PATH,
-    'format': 'bestvideo+bestaudio/best',
-    'merge_output_format': temp_ext,
-    'postprocessors': [],
-    'socket_timeout': 3600,
-    'noplaylist': True,
-    'cookiefile': COOKIES_PATH,
-    'quiet': True,
-}
+       ydl_opts = {
+        'outtmpl': temp_path,
+        'ffmpeg_location': FFMPEG_PATH,
+        'format': 'bestvideo+bestaudio/best',
+        'merge_output_format': temp_ext,
+        'postprocessors': [],
+        'socket_timeout': 3600,
+        'noplaylist': True,
+        'cookiefile': COOKIES_PATH,
+        'quiet': True,
+    }
 
 
     try:
