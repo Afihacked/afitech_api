@@ -217,7 +217,7 @@ def download_video(
     ydl_opts = {
         'outtmpl': temp_path,
         'ffmpeg_location': FFMPEG_PATH,
-        'format': 'bestaudio/best' if format == 'mp3' else 'bestvideo[height<=1080]+bestaudio/best[height<=1440]',
+        'format': 'bestaudio/best' if format == 'mp3' else 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
         'merge_output_format': temp_ext,
         'postprocessors': [],
         'socket_timeout': 3600,
