@@ -411,12 +411,12 @@ def get_info(url: str, format: str = Query("mp4")):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'Tidak diketahui')
-            formats = info.get('formats', [])
-            filesize = 0
-            valid_formats = [f for f in formats if f.get('filesize') or f.get('filesize_approx')]
-            if valid_formats:
-                best_format = max(valid_formats, key=lambda f: f.get('filesize', 0) or f.get('filesize_approx', 0))
-                filesize = best_format.get('filesize') or best_format.get('filesize_approx', 0)
+            requested = info.get("requested_downloads", [])
+            
+            video_size = next((s.get("filesize") or s.get("filesize_approx") or 0 for s in requested if s.get("vcodec") != "none"), 0)
+            audio_size = next((s.get("filesize") or s.get("filesize_approx") or 0 for s in requested if s.get("acodec") != "none"), 0)
+            filesize = video_size + audio_size
+
             return {"title": title, "filesize": filesize}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Gagal mengambil info video: {str(e)}"})
