@@ -214,7 +214,8 @@ def download_video(
     temp_path = f"{output_base}.{temp_ext}"
     final_path = f"{output_base}.{format}"
 
-       ydl_opts = {
+    # ✅ Perbaiki indentasi di sini
+    ydl_opts = {
         'outtmpl': temp_path,
         'ffmpeg_location': FFMPEG_PATH,
         'format': 'bestvideo+bestaudio/best',
@@ -225,7 +226,6 @@ def download_video(
         'cookiefile': COOKIES_PATH,
         'quiet': True,
     }
-
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -255,9 +255,6 @@ def download_video(
         return JSONResponse(status_code=500, content={"error": f"Gagal mengunduh: {str(e)}"})
 
 
-# (semua import tetap sama)
-
-# ... kode sebelumnya tetap ...
 @app.get("/download/instagram")
 def download_instagram(
     background_tasks: BackgroundTasks,
